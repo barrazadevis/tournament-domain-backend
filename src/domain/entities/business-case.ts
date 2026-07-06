@@ -1,0 +1,49 @@
+import { EntityId } from '../value-objects/entity-id';
+
+export enum RequiredStructureType {
+  SINGLE_STRUCTURE = 'SINGLE_STRUCTURE', // Cuartos: una sola estructura correcta
+  JUSTIFY_BETWEEN_TWO = 'JUSTIFY_BETWEEN_TWO', // Semifinal: elegir entre dos válidas
+  AMBIGUOUS = 'AMBIGUOUS', // Final: caso abierto, se evalúa el argumento
+}
+
+/**
+ * Entidad BusinessCase: el enunciado del caso empresarial que reciben
+ * los dos equipos de un match (ej. "calcular el bono de 20 vendedores").
+ */
+export class BusinessCase {
+  private readonly id: EntityId;
+  private readonly title: string;
+  private readonly description: string;
+  private readonly structureType: RequiredStructureType;
+
+  constructor(
+    id: EntityId,
+    title: string,
+    description: string,
+    structureType: RequiredStructureType,
+  ) {
+    if (!title.trim() || !description.trim()) {
+      throw new Error('El caso debe tener título y descripción');
+    }
+    this.id = id;
+    this.title = title.trim();
+    this.description = description.trim();
+    this.structureType = structureType;
+  }
+
+  getId(): EntityId {
+    return this.id;
+  }
+
+  getTitle(): string {
+    return this.title;
+  }
+
+  getDescription(): string {
+    return this.description;
+  }
+
+  getStructureType(): RequiredStructureType {
+    return this.structureType;
+  }
+}

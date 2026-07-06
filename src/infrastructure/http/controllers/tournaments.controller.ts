@@ -1,0 +1,143 @@
+import { Body, Controller, Get, Inject, NotFoundException, Param, Post } from '@nestjs/common';
+import { ApiTags, ApiOperation } from '@nestjs/swagger';
+import { CreateTournamentUseCase } from '../../../application/use-cases/create-tournament.use-case';
+import { StartTournamentUseCase } from '../../../application/use-cases/start-tournament.use-case';
+import { SubmitQualifyingSolutionUseCase } from '../../../application/use-cases/submit-qualifying-solution.use-case';
+import { JudgeQualifyingSubmissionUseCase } from '../../../application/use-cases/judge-qualifying-submission.use-case';
+import { FinalizeQualifyingRoundUseCase } from '../../../application/use-cases/finalize-qualifying-round.use-case';
+import { AdvanceToNextRoundUseCase } from '../../../application/use-cases/advance-to-next-round.use-case';
+import { EntityId } from '../../../domain/value-objects/entity-id';
+import { TournamentRepository } from '../../../application/ports/tournament.repository';
+import { QualifyingRoundRepository } from '../../../application/ports/qualifying-round.repository';
+import { TournamentPresenter } from '../presenters/tournament.presenter';
+import {
+  CreateTournamentDto,
+  StartTournamentDto,
+  SubmitSolutionDto,
+  JudgeQualifyingVerdictDto,
+  AdvanceRoundDto,
+} from '../dto/requests.dto';
+import { TOURNAMENT_REPOSITORY, QUALIFYING_ROUND_REPOSITORY } from '../tokens';
+
+@ApiTags('tournaments')
+@Controller('tournaments')
+export class TournamentsController {
+  constructor(
+    private readonly createTournament: CreateTournamentUseCase,
+    private readonly startTournament: StartTournamentUseCase,
+    private readonly submitQualifyingSolution: SubmitQualifyingSolutionUseCase,
+    private readonly judgeQualifyingSubmission: JudgeQualifyingSubmissionUseCase,
+    private readonly finalizeQualifyingRound: FinalizeQualifyingRoundUseCase,
+    private readonly advanceToNextRound: AdvanceToNextRoundUseCase,
+    @Inject(TOURNAMENT_REPOSITORY) private readonly tournamentRepository: TournamentRepository,
+    @Inject(QUALIFYING_ROUND_REPOSITORY)
+    private readonly qualifyingRoundRepository: QualifyingRoundRepository,
+  ) {}
+
+  @ApiOperation({ summary: 'Crear un torneo vacío' })
+  @Post()
+  async create(@Body() dto: CreateTournamentDto) {
+    const tournament = await this.createTournament.execute(dto);
+    return TournamentPresenter.toJSON(tournament);
+  }
+
+  @ApiOperation({ summary: 'Listar todos los torneos creados (para elegir cuál administrar/ver)' })
+  @Get()
+  async findAll() {
+    const tournaments = await this.tournamentRepository.findAll();
+    return tournaments.map((t) => ({
+      id: t.getId().toString(),
+      name: t.getName(),
+      status: t.getStatus(),
+    }));
+  }
+
+  @ApiOperation({ summary: 'Consultar el estado completo de un torneo (rondas, matches, submissions)' })
+  @Get(':id')
+  async getById(@Param('id') id: string) {
+    const tournament = await this.tournamentRepository.findById(EntityId.fromString(id));
+    if (!tournament) throw new NotFoundException(`Torneo ${id} no encontrado`);
+    return TournamentPresenter.toJSON(tournament);
+  }
+
+  @ApiOperation({ summary: 'Consultar el estado de la ronda clasificatoria (si existe)' })
+  @Get(':id/qualifying-round')
+  async getQualifyingRound(@Param('id') id: string) {
+    const round = await this.qualifyingRoundRepository.findByTournamentId(EntityId.fromString(id));
+    if (!round) throw new NotFoundException(`Este torneo no tiene ronda clasificatoria activa`);
+
+    return {
+      id: round.getId().toString(),
+      businessCase: {
+        title: round.getBusinessCase().getTitle(),
+        description: round.getBusinessCase().getDescription(),
+      },
+      timerDurationSeconds: round.getTimerDurationSeconds(),
+      targetQualifierCount: round.getTargetQualifierCount(),
+      participantTeamIds: round.getParticipantTeamIds(),
+      submissions: round.getSubmissions().map((s) => ({
+        teamId: s.getTeamId().toString(),
+        content: s.getContent(),
+        submittedAt: s.getSubmittedAt().toISOString(),
+        verdict: s.getVerdict(),
+      })),
+    };
+  }
+
+  @ApiOperation({
+    summary: 'Iniciar el torneo (decide clasificatoria vs bracket directo según potencia de 2)',
+  })
+  @Post(':id/start')
+  async start(@Param('id') id: string, @Body() dto: StartTournamentDto) {
+    return this.startTournament.execute({ tournamentId: id, ...dto });
+  }
+
+  @ApiOperation({ summary: 'Enviar la solución de un equipo en la ronda clasificatoria' })
+  @Post(':id/qualifying-submissions')
+  async submitQualifying(@Param('id') id: string, @Body() dto: SubmitSolutionDto) {
+    await this.submitQualifyingSolution.execute({
+      tournamentId: id,
+      teamId: dto.teamId,
+      content: dto.content,
+      submittedAt: new Date(),
+    });
+    return { status: 'ok' };
+  }
+
+  @ApiOperation({ summary: 'Aprobar o rechazar la submission de un equipo en la clasificatoria' })
+  @Post(':id/qualifying-submissions/:teamId/verdict')
+  async judgeQualifying(
+    @Param('id') id: string,
+    @Param('teamId') teamId: string,
+    @Body() dto: JudgeQualifyingVerdictDto,
+  ) {
+    await this.judgeQualifyingSubmission.execute({
+      tournamentId: id,
+      teamId,
+      approve: dto.approve,
+      now: new Date(),
+    });
+    return { status: 'ok' };
+  }
+
+  @ApiOperation({ summary: 'Cerrar la clasificatoria y generar la ronda de Cuartos con los clasificados' })
+  @Post(':id/qualifying-round/finalize')
+  async finalizeQualifying(@Param('id') id: string) {
+    return this.finalizeQualifyingRound.execute({ tournamentId: id });
+  }
+
+  @ApiOperation({ summary: 'Avanzar de ronda (empareja ganadores aleatoriamente, o cierra el torneo si era la final)' })
+  @Post(':id/rounds/:order/advance')
+  async advanceRound(
+    @Param('id') id: string,
+    @Param('order') order: string,
+    @Body() dto: AdvanceRoundDto,
+  ) {
+    return this.advanceToNextRound.execute({
+      tournamentId: id,
+      currentRoundOrder: Number(order),
+      nextRoundName: dto.nextRoundName,
+      timerDurationSeconds: dto.timerDurationSeconds,
+    });
+  }
+}
