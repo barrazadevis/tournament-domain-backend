@@ -96,7 +96,7 @@ describe('Tournament API (E2E)', () => {
 
     await request(app.getHttpServer())
       .post(`/matches/${firstMatch.id}/verdict`)
-      .send({ approve: true })
+      .send({ teamId: firstMatch.teamAId, approve: true })
       .expect(201);
 
     const afterVerdict = await request(app.getHttpServer()).get(`/tournaments/${tournamentId}`);

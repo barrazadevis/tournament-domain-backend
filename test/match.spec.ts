@@ -81,7 +81,7 @@ describe('Match', () => {
       match.submitSolution(submission);
       expect(match.getStatus()).toBe(MatchStatus.AWAITING_JUDGMENT);
 
-      match.approveCurrentSubmission(now);
+      match.approveCurrentSubmission(teamAId, now);
       expect(match.getStatus()).toBe(MatchStatus.RESOLVED);
       expect(match.getWinnerId()?.equals(teamAId)).toBe(true);
       expect(match.getResolution()).toBe('WINNER');
@@ -96,7 +96,7 @@ describe('Match', () => {
 
       const badSubmission = new Submission(EntityId.generate(), teamAId, 'Respuesta con error', now);
       match.submitSolution(badSubmission);
-      match.rejectCurrentSubmission(now);
+      match.rejectCurrentSubmission(teamAId, now);
 
       expect(match.getStatus()).toBe(MatchStatus.ACTIVE);
       expect(match.getResolution()).toBeNull();
@@ -108,7 +108,7 @@ describe('Match', () => {
         now,
       );
       match.submitSolution(goodSubmission);
-      match.approveCurrentSubmission(now);
+      match.approveCurrentSubmission(teamBId, now);
 
       expect(match.getWinnerId()?.equals(teamBId)).toBe(true);
     });
@@ -119,7 +119,7 @@ describe('Match', () => {
       match.start(now);
 
       match.submitSolution(new Submission(EntityId.generate(), teamAId, 'Intento 1', now));
-      match.rejectCurrentSubmission(now);
+      match.rejectCurrentSubmission(teamAId, now);
 
       expect(() =>
         match.submitSolution(new Submission(EntityId.generate(), teamAId, 'Intento 2', now)),
@@ -132,10 +132,10 @@ describe('Match', () => {
       match.start(now);
 
       match.submitSolution(new Submission(EntityId.generate(), teamAId, 'Intento A', now));
-      match.rejectCurrentSubmission(now);
+      match.rejectCurrentSubmission(teamAId, now);
 
       match.submitSolution(new Submission(EntityId.generate(), teamBId, 'Intento B', now));
-      match.rejectCurrentSubmission(now);
+      match.rejectCurrentSubmission(teamBId, now);
 
       expect(match.getStatus()).toBe(MatchStatus.RESOLVED);
       expect(match.getResolution()).toBe('NO_WINNER');
@@ -170,9 +170,9 @@ describe('Match', () => {
       const now = new Date();
       match.start(now);
       match.submitSolution(new Submission(EntityId.generate(), teamAId, 'Solución', now));
-      match.approveCurrentSubmission(now);
+      match.approveCurrentSubmission(teamAId, now);
 
-      expect(() => match.approveCurrentSubmission(now)).toThrow();
+      expect(() => match.approveCurrentSubmission(teamAId, now)).toThrow();
     });
   });
 
@@ -209,6 +209,129 @@ describe('Match', () => {
 
       expect(match.hasElapsedTimerDuration(before)).toBe(false);
       expect(match.hasElapsedTimerDuration(after)).toBe(true);
+    });
+  });
+
+  describe('submissions en paralelo', () => {
+    it('permite que ambos equipos envíen su solución sin bloquearse entre sí', () => {
+      const { match, teamAId, teamBId } = buildMatch();
+      const now = new Date();
+      match.start(now);
+
+      match.submitSolution(new Submission(EntityId.generate(), teamAId, 'Solución A', now));
+      expect(match.getStatus()).toBe(MatchStatus.AWAITING_JUDGMENT);
+
+      match.submitSolution(new Submission(EntityId.generate(), teamBId, 'Solución B', now));
+      expect(match.getStatus()).toBe(MatchStatus.AWAITING_JUDGMENT);
+      expect(match.getSubmissions()).toHaveLength(2);
+    });
+
+    it('canAnyTeamStillSubmit: true si nadie ha enviado, false una vez que ambos ya enviaron', () => {
+      const { match, teamAId, teamBId } = buildMatch();
+      const now = new Date();
+      match.start(now);
+      expect(match.canAnyTeamStillSubmit()).toBe(true);
+
+      match.submitSolution(new Submission(EntityId.generate(), teamAId, 'Solución A', now));
+      expect(match.canAnyTeamStillSubmit()).toBe(true); // B todavía puede enviar
+
+      match.submitSolution(new Submission(EntityId.generate(), teamBId, 'Solución B', now));
+      expect(match.canAnyTeamStillSubmit()).toBe(false); // ya nadie puede enviar más
+    });
+
+    it('canAnyTeamStillSubmit: false si el único que faltaba quedó descalificado', () => {
+      const { match, teamAId, teamBId } = buildMatch();
+      const now = new Date();
+      match.start(now);
+
+      match.submitSolution(new Submission(EntityId.generate(), teamAId, 'Solución A', now));
+      match.rejectCurrentSubmission(teamAId, now); // A descalificado, match vuelve a ACTIVE
+      expect(match.canAnyTeamStillSubmit()).toBe(true); // B aún puede enviar
+
+      match.submitSolution(new Submission(EntityId.generate(), teamBId, 'Solución B', now));
+      expect(match.canAnyTeamStillSubmit()).toBe(false);
+    });
+
+    it('no permite que el mismo equipo tenga dos submissions pendientes a la vez', () => {
+      const { match, teamAId } = buildMatch();
+      const now = new Date();
+      match.start(now);
+      match.submitSolution(new Submission(EntityId.generate(), teamAId, 'Intento 1', now));
+
+      expect(() =>
+        match.submitSolution(new Submission(EntityId.generate(), teamAId, 'Intento 2', now)),
+      ).toThrow('pendiente de revisión');
+    });
+
+    it('si se aprueba a A mientras B tiene una submission pendiente, el match cierra y la de B queda sin efecto', () => {
+      const { match, teamAId, teamBId } = buildMatch();
+      const now = new Date();
+      match.start(now);
+      match.submitSolution(new Submission(EntityId.generate(), teamAId, 'Solución A', now));
+      match.submitSolution(new Submission(EntityId.generate(), teamBId, 'Solución B', now));
+
+      match.approveCurrentSubmission(teamAId, now);
+
+      expect(match.getStatus()).toBe(MatchStatus.RESOLVED);
+      expect(match.getWinnerId()?.equals(teamAId)).toBe(true);
+      const bSubmission = match.getSubmissions().find((s) => s.getTeamId().equals(teamBId));
+      expect(bSubmission?.isPending()).toBe(true);
+    });
+
+    it('si se rechaza a A y B tiene una submission pendiente, el match se queda en AWAITING_JUDGMENT', () => {
+      const { match, teamAId, teamBId } = buildMatch();
+      const now = new Date();
+      match.start(now);
+      match.submitSolution(new Submission(EntityId.generate(), teamAId, 'Solución A', now));
+      match.submitSolution(new Submission(EntityId.generate(), teamBId, 'Solución B', now));
+
+      match.rejectCurrentSubmission(teamAId, now);
+
+      expect(match.getStatus()).toBe(MatchStatus.AWAITING_JUDGMENT);
+      expect(match.getResolution()).toBeNull();
+
+      match.approveCurrentSubmission(teamBId, now);
+      expect(match.getWinnerId()?.equals(teamBId)).toBe(true);
+    });
+  });
+
+  describe('repetir match (restart)', () => {
+    it('permite repetir un match RESOLVED/NO_WINNER sin ninguna submission', () => {
+      const { match } = buildMatch();
+      const now = new Date();
+      match.start(now);
+      match.expireTimer();
+      expect(match.getStatus()).toBe(MatchStatus.RESOLVED);
+      expect(match.getResolution()).toBe('NO_WINNER');
+
+      match.restart();
+
+      expect(match.getStatus()).toBe(MatchStatus.PENDING);
+      expect(match.getResolution()).toBeNull();
+      expect(match.getTimerStartedAt()).toBeNull();
+    });
+
+    it('no permite repetir si hubo submissions (aunque haya terminado NO_WINNER)', () => {
+      const { match, teamAId, teamBId } = buildMatch();
+      const now = new Date();
+      match.start(now);
+      match.submitSolution(new Submission(EntityId.generate(), teamAId, 'Intento A', now));
+      match.rejectCurrentSubmission(teamAId, now);
+      match.submitSolution(new Submission(EntityId.generate(), teamBId, 'Intento B', now));
+      match.rejectCurrentSubmission(teamBId, now);
+      expect(match.getResolution()).toBe('NO_WINNER');
+
+      expect(() => match.restart()).toThrow('hubo equipos que sí enviaron solución');
+    });
+
+    it('no permite repetir un match que terminó con ganador', () => {
+      const { match, teamAId } = buildMatch();
+      const now = new Date();
+      match.start(now);
+      match.submitSolution(new Submission(EntityId.generate(), teamAId, 'Solución', now));
+      match.approveCurrentSubmission(teamAId, now);
+
+      expect(() => match.restart()).toThrow('Solo se puede repetir un match que terminó sin ganador');
     });
   });
 });

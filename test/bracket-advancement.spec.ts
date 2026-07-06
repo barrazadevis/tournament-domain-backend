@@ -21,7 +21,7 @@ function buildResolvedMatch(winnerId: EntityId, loserId: EntityId): Match {
   const now = new Date();
   match.start(now);
   match.submitSolution(new Submission(EntityId.generate(), winnerId, 'Solución ganadora', now));
-  match.approveCurrentSubmission(now);
+  match.approveCurrentSubmission(winnerId, now);
   return match;
 }
 
@@ -38,9 +38,9 @@ function buildNoWinnerMatch(): Match {
   const now = new Date();
   match.start(now);
   match.submitSolution(new Submission(EntityId.generate(), teamA, 'Intento fallido A', now));
-  match.rejectCurrentSubmission(now);
+  match.rejectCurrentSubmission(teamA, now);
   match.submitSolution(new Submission(EntityId.generate(), teamB, 'Intento fallido B', now));
-  match.rejectCurrentSubmission(now);
+  match.rejectCurrentSubmission(teamB, now);
   return match;
 }
 

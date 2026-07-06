@@ -3,6 +3,7 @@ import { TournamentRepository } from '../ports/tournament.repository';
 
 export interface JudgeMatchSubmissionInput {
   matchId: string;
+  teamId: string;
   approve: boolean;
   now: Date;
 }
@@ -23,10 +24,11 @@ export class JudgeMatchSubmissionUseCase {
     }
 
     const match = tournament.findMatch(matchId)!;
+    const teamId = EntityId.fromString(input.teamId);
     if (input.approve) {
-      match.approveCurrentSubmission(input.now);
+      match.approveCurrentSubmission(teamId, input.now);
     } else {
-      match.rejectCurrentSubmission(input.now);
+      match.rejectCurrentSubmission(teamId, input.now);
     }
 
     await this.tournamentRepository.save(tournament);

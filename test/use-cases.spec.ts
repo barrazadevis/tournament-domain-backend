@@ -174,6 +174,7 @@ describe('Casos de uso', () => {
           });
           await uc.judgeMatchSubmission.execute({
             matchId: match.getId().toString(),
+            teamId: match.getTeamAId().toString(),
             approve: true,
             now,
           });

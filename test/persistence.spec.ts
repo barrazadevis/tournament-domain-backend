@@ -88,7 +88,7 @@ describe('Persistencia SQLite (integración)', () => {
     match.submitSolution(
       new Submission(EntityId.generate(), teamA.getId(), 'Estructura Para', now),
     );
-    match.approveCurrentSubmission(now);
+    match.approveCurrentSubmission(teamA.getId(), now);
 
     const round = new Round(EntityId.generate(), 'Cuartos de Final', 0);
     round.addMatch(match);
@@ -128,7 +128,7 @@ describe('Persistencia SQLite (integración)', () => {
     );
     match.start(now);
     match.submitSolution(new Submission(EntityId.generate(), teamA.getId(), 'Intento fallido', now));
-    match.rejectCurrentSubmission(now);
+    match.rejectCurrentSubmission(teamA.getId(), now);
 
     const round = new Round(EntityId.generate(), 'Cuartos', 0);
     round.addMatch(match);

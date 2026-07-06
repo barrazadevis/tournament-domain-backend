@@ -65,6 +65,10 @@ export class SubmitSolutionDto {
 }
 
 export class JudgeVerdictDto {
+  @ApiProperty({ description: 'Equipo cuya submission se está juzgando' })
+  @IsString()
+  teamId!: string;
+
   @ApiProperty({ description: 'true = aprobar, false = rechazar' })
   @IsBoolean()
   approve!: boolean;

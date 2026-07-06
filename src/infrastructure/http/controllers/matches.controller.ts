@@ -3,10 +3,12 @@ import { ApiTags, ApiOperation } from '@nestjs/swagger';
 import { StartMatchUseCase } from '../../../application/use-cases/start-match.use-case';
 import { SubmitMatchSolutionUseCase } from '../../../application/use-cases/submit-match-solution.use-case';
 import { JudgeMatchSubmissionUseCase } from '../../../application/use-cases/judge-match-submission.use-case';
+import { RestartMatchUseCase } from '../../../application/use-cases/restart-match.use-case';
 import { SubmitSolutionDto, JudgeVerdictDto } from '../dto/requests.dto';
 import { EntityId } from '../../../domain/value-objects/entity-id';
 import { TournamentRepository } from '../../../application/ports/tournament.repository';
 import { TOURNAMENT_REPOSITORY } from '../tokens';
+import { MatchTimerService } from '../../websockets/match-timer.service';
 
 @ApiTags('matches')
 @Controller('matches')
@@ -15,6 +17,8 @@ export class MatchesController {
     private readonly startMatch: StartMatchUseCase,
     private readonly submitMatchSolution: SubmitMatchSolutionUseCase,
     private readonly judgeMatchSubmission: JudgeMatchSubmissionUseCase,
+    private readonly restartMatch: RestartMatchUseCase,
+    private readonly matchTimer: MatchTimerService,
     @Inject(TOURNAMENT_REPOSITORY) private readonly tournamentRepository: TournamentRepository,
   ) {}
 
@@ -58,19 +62,36 @@ export class MatchesController {
   @ApiOperation({ summary: 'Enviar la solución de un equipo para un match' })
   @Post(':matchId/submissions')
   async submit(@Param('matchId') matchId: string, @Body() dto: SubmitSolutionDto) {
-    await this.submitMatchSolution.execute({
+    const result = await this.submitMatchSolution.execute({
       matchId,
       teamId: dto.teamId,
       content: dto.content,
       submittedAt: new Date(),
     });
+    if (result.shouldStopTimer) {
+      this.matchTimer.stop(matchId);
+    }
     return { status: 'ok' };
   }
 
-  @ApiOperation({ summary: 'Aprobar o rechazar la submission actual de un match' })
+  @ApiOperation({ summary: 'Aprobar o rechazar la submission de un equipo en un match' })
   @Post(':matchId/verdict')
   async judge(@Param('matchId') matchId: string, @Body() dto: JudgeVerdictDto) {
-    await this.judgeMatchSubmission.execute({ matchId, approve: dto.approve, now: new Date() });
+    await this.judgeMatchSubmission.execute({
+      matchId,
+      teamId: dto.teamId,
+      approve: dto.approve,
+      now: new Date(),
+    });
+    return { status: 'ok' };
+  }
+
+  @ApiOperation({
+    summary: 'Repetir un match que terminó sin ganador y sin ninguna submission (silencio total)',
+  })
+  @Post(':matchId/restart')
+  async restart(@Param('matchId') matchId: string) {
+    await this.restartMatch.execute({ matchId });
     return { status: 'ok' };
   }
 }

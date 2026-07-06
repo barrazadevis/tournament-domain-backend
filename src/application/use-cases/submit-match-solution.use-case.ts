@@ -9,10 +9,15 @@ export interface SubmitMatchSolutionInput {
   submittedAt: Date;
 }
 
+export interface SubmitMatchSolutionOutput {
+  /** true si con esta submission ya nadie más puede enviar — el timer server-side puede detenerse. */
+  shouldStopTimer: boolean;
+}
+
 export class SubmitMatchSolutionUseCase {
   constructor(private readonly tournamentRepository: TournamentRepository) {}
 
-  async execute(input: SubmitMatchSolutionInput): Promise<void> {
+  async execute(input: SubmitMatchSolutionInput): Promise<SubmitMatchSolutionOutput> {
     const matchId = EntityId.fromString(input.matchId);
     const tournament = await this.tournamentRepository.findByMatchId(matchId);
     if (!tournament) {
@@ -29,5 +34,7 @@ export class SubmitMatchSolutionUseCase {
     match.submitSolution(submission);
 
     await this.tournamentRepository.save(tournament);
+
+    return { shouldStopTimer: !match.canAnyTeamStillSubmit() };
   }
 }

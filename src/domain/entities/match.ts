@@ -12,7 +12,10 @@ export type MatchResolution = 'WINNER' | 'NO_WINNER';
  * 1. Solo un equipo participante (teamA o teamB) puede enviar submissions.
  * 2. Un equipo descalificado en este match (submission rechazada) no puede
  *    volver a intentar.
- * 3. Solo puede haber UNA submission "bajo juicio" a la vez.
+ * 3. Un equipo no puede tener más de una submission propia bajo juicio a
+ *    la vez — pero AMBOS equipos SÍ pueden tener, cada uno, una submission
+ *    pendiente simultáneamente (decisión de negocio: así el juez puede
+ *    revisar la del rival sin esperar a que la primera sea rechazada).
  * 4. Toda transición de estado pasa por MatchStateMachine.
  */
 export class Match {
@@ -119,37 +122,80 @@ export class Match {
 
   /**
    * Un equipo envía su solución. Solo posible si:
-   * - el match está ACTIVE (no ya bajo juicio ni resuelto)
+   * - el match no está RESOLVED
    * - el equipo pertenece al match
    * - el equipo no fue descalificado previamente en este match
+   * - ESE equipo no tiene ya una submission propia pendiente de juicio
+   *   (el rival sí puede tener la suya pendiente al mismo tiempo — ver
+   *   invariante 3 en el doc-comment de la clase).
    */
   submitSolution(submission: Submission): void {
-    MatchStateMachine.assertValidTransition(this.status, MatchStatus.AWAITING_JUDGMENT);
+    const teamId = submission.getTeamId();
 
-    if (!this.includesTeam(submission.getTeamId())) {
+    if (!this.includesTeam(teamId)) {
       throw new Error('Este equipo no participa en el match');
     }
-    if (this.disqualifiedTeamIds.has(submission.getTeamId().toString())) {
+    if (this.disqualifiedTeamIds.has(teamId.toString())) {
       throw new Error('Este equipo ya fue descalificado en este match y no puede reintentar');
+    }
+    if (this.status === MatchStatus.RESOLVED) {
+      throw new Error('El match ya terminó');
+    }
+    if (this.hasPendingSubmissionFrom(teamId)) {
+      throw new Error('Ya tienes una solución pendiente de revisión en este match');
+    }
+
+    // AWAITING_JUDGMENT -> AWAITING_JUDGMENT es válido aquí: el rival ya
+    // tiene una submission pendiente y este equipo agrega la suya, sin
+    // que una bloquee a la otra. Si el match seguía ACTIVE, sí es una
+    // transición real y pasa por la máquina de estados.
+    if (this.status !== MatchStatus.AWAITING_JUDGMENT) {
+      MatchStateMachine.assertValidTransition(this.status, MatchStatus.AWAITING_JUDGMENT);
+      this.status = MatchStatus.AWAITING_JUDGMENT;
     }
 
     this.submissions.push(submission);
-    this.status = MatchStatus.AWAITING_JUDGMENT;
   }
 
-  private getSubmissionUnderJudgment(): Submission {
-    const pending = this.submissions.find((s) => s.isPending());
+  private hasPendingSubmissionFrom(teamId: EntityId): boolean {
+    return this.submissions.some((s) => s.getTeamId().equals(teamId) && s.isPending());
+  }
+
+  private hasAnySubmissionFrom(teamId: EntityId): boolean {
+    return this.submissions.some((s) => s.getTeamId().equals(teamId));
+  }
+
+  /**
+   * true si algún equipo todavía podría enviar una submission (no está
+   * descalificado y no ha enviado ya la suya en este match). Se usa para
+   * decidir si el timer server-side debe seguir corriendo: una vez que
+   * NINGÚN equipo puede enviar más, seguir contando no tiene sentido —
+   * lo único que falta es el veredicto del juez.
+   */
+  canAnyTeamStillSubmit(): boolean {
+    return [this.teamAId, this.teamBId].some(
+      (teamId) => !this.disqualifiedTeamIds.has(teamId.toString()) && !this.hasAnySubmissionFrom(teamId),
+    );
+  }
+
+  private getPendingSubmissionFrom(teamId: EntityId): Submission {
+    const pending = this.submissions.find((s) => s.getTeamId().equals(teamId) && s.isPending());
     if (!pending) {
-      throw new Error('No hay ninguna submission pendiente de juicio');
+      throw new Error('Este equipo no tiene ninguna submission pendiente de juicio');
     }
     return pending;
   }
 
   /**
-   * El juez aprueba la submission actual: el match se resuelve con ganador.
+   * El juez aprueba la submission de `teamId`: el match se resuelve con
+   * ese equipo como ganador. Si el rival también tenía una submission
+   * pendiente, queda sin juzgar — el match ya cerró (decisión de negocio).
    */
-  approveCurrentSubmission(now: Date): void {
-    const submission = this.getSubmissionUnderJudgment();
+  approveCurrentSubmission(teamId: EntityId, now: Date): void {
+    if (this.status === MatchStatus.RESOLVED) {
+      throw new Error('El match ya terminó');
+    }
+    const submission = this.getPendingSubmissionFrom(teamId);
     submission.approve(now);
 
     MatchStateMachine.assertValidTransition(this.status, MatchStatus.RESOLVED);
@@ -159,16 +205,22 @@ export class Match {
   }
 
   /**
-   * El juez rechaza la submission actual: el equipo queda descalificado
-   * de este match y, si el rival aún no fue descalificado, el match vuelve
-   * a ACTIVE para darle su oportunidad.
+   * El juez rechaza la submission de `teamId`: ese equipo queda
+   * descalificado de este match. Luego:
+   * - si el rival también ya está descalificado, el match cierra sin ganador.
+   * - si el rival tiene una submission pendiente (la envió en paralelo),
+   *   el match se queda en AWAITING_JUDGMENT — todavía falta juzgarla.
+   * - si no, el match vuelve a ACTIVE para darle su oportunidad al rival.
    */
-  rejectCurrentSubmission(now: Date): void {
-    const submission = this.getSubmissionUnderJudgment();
+  rejectCurrentSubmission(teamId: EntityId, now: Date): void {
+    if (this.status === MatchStatus.RESOLVED) {
+      throw new Error('El match ya terminó');
+    }
+    const submission = this.getPendingSubmissionFrom(teamId);
     submission.reject(now);
-    this.disqualifiedTeamIds.add(submission.getTeamId().toString());
+    this.disqualifiedTeamIds.add(teamId.toString());
 
-    const opponentId = this.getOpponentOf(submission.getTeamId());
+    const opponentId = this.getOpponentOf(teamId);
     const opponentAlreadyDisqualified = this.disqualifiedTeamIds.has(opponentId.toString());
 
     if (opponentAlreadyDisqualified) {
@@ -176,10 +228,12 @@ export class Match {
       MatchStateMachine.assertValidTransition(this.status, MatchStatus.RESOLVED);
       this.status = MatchStatus.RESOLVED;
       this.resolution = 'NO_WINNER';
-    } else {
+    } else if (!this.hasPendingSubmissionFrom(opponentId)) {
       MatchStateMachine.assertValidTransition(this.status, MatchStatus.ACTIVE);
       this.status = MatchStatus.ACTIVE;
     }
+    // else: el rival ya tiene su propia submission pendiente — el match
+    // se queda en AWAITING_JUDGMENT (no-op), el juez todavía debe revisarla.
   }
 
   /**
@@ -194,6 +248,26 @@ export class Match {
     MatchStateMachine.assertValidTransition(this.status, MatchStatus.RESOLVED);
     this.status = MatchStatus.RESOLVED;
     this.resolution = 'NO_WINNER';
+  }
+
+  /**
+   * Repite el match desde cero: solo permitido si terminó sin ganador y
+   * NINGÚN equipo llegó a enviar nada (silencio total por timeout). Si
+   * hubo intentos que fueron rechazados, ya usaron su oportunidad — no
+   * aplica (decisión de negocio explícita, no se repite un match "perdido").
+   */
+  restart(): void {
+    if (this.status !== MatchStatus.RESOLVED || this.resolution !== 'NO_WINNER') {
+      throw new Error('Solo se puede repetir un match que terminó sin ganador');
+    }
+    if (this.submissions.length > 0) {
+      throw new Error('No se puede repetir: hubo equipos que sí enviaron solución');
+    }
+
+    this.status = MatchStatus.PENDING;
+    this.timerStartedAt = null;
+    this.resolution = null;
+    this.disqualifiedTeamIds.clear();
   }
 
   hasElapsedTimerDuration(now: Date): boolean {

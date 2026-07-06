@@ -19,6 +19,7 @@ import { StartMatchUseCase } from '../../application/use-cases/start-match.use-c
 import { SubmitMatchSolutionUseCase } from '../../application/use-cases/submit-match-solution.use-case';
 import { JudgeMatchSubmissionUseCase } from '../../application/use-cases/judge-match-submission.use-case';
 import { AdvanceToNextRoundUseCase } from '../../application/use-cases/advance-to-next-round.use-case';
+import { RestartMatchUseCase } from '../../application/use-cases/restart-match.use-case';
 import { ExpireMatchTimerUseCase } from '../../application/use-cases/expire-match-timer.use-case';
 import { RenameTournamentUseCase } from '../../application/use-cases/rename-tournament.use-case';
 import { DeleteTournamentUseCase } from '../../application/use-cases/delete-tournament.use-case';
@@ -143,6 +144,11 @@ import {
       provide: AdvanceToNextRoundUseCase,
       useFactory: (tournamentRepo: TournamentRepository) =>
         new AdvanceToNextRoundUseCase(tournamentRepo),
+      inject: [TOURNAMENT_REPOSITORY],
+    },
+    {
+      provide: RestartMatchUseCase,
+      useFactory: (tournamentRepo: TournamentRepository) => new RestartMatchUseCase(tournamentRepo),
       inject: [TOURNAMENT_REPOSITORY],
     },
     {
