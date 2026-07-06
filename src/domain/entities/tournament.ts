@@ -16,7 +16,7 @@ export enum TournamentStatus {
  */
 export class Tournament {
   private readonly id: EntityId;
-  private readonly name: string;
+  private name: string;
   private status: TournamentStatus = TournamentStatus.DRAFT;
   private readonly rounds: Round[] = [];
 
@@ -34,6 +34,13 @@ export class Tournament {
 
   getName(): string {
     return this.name;
+  }
+
+  rename(name: string): void {
+    if (!name.trim()) {
+      throw new Error('El torneo debe tener nombre');
+    }
+    this.name = name.trim();
   }
 
   getStatus(): TournamentStatus {
@@ -79,6 +86,18 @@ export class Tournament {
 
   finish(): void {
     this.status = TournamentStatus.FINISHED;
+  }
+
+  /**
+   * Vuelve el torneo a DRAFT descartando todo el progreso (rondas, matches,
+   * clasificatoria) para repetir la actividad desde cero con el mismo id/nombre.
+   * La persistencia real de esto (borrar filas de rondas/clasificatoria en la
+   * base) vive en TournamentRepository.reset(), no aquí — este método solo
+   * deja el agregado en memoria consistente con ese mismo estado.
+   */
+  resetToDraft(): void {
+    this.rounds.length = 0;
+    this.status = TournamentStatus.DRAFT;
   }
 
   static rehydrate(props: {

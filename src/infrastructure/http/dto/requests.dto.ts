@@ -24,6 +24,12 @@ export class CreateTournamentDto {
   name!: string;
 }
 
+export class RenameTournamentDto {
+  @ApiProperty({ example: 'Torneo Eliminatorio de Casos - Grupo B' })
+  @IsString()
+  name!: string;
+}
+
 export class StartTournamentDto {
   @ApiProperty({
     description: 'IDs de los equipos inscritos. Si no es potencia de 2, arranca la clasificatoria.',

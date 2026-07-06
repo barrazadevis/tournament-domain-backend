@@ -87,6 +87,21 @@ export class SqliteTournamentRepository implements TournamentRepository {
     return tournaments;
   }
 
+  async delete(id: EntityId): Promise<void> {
+    // rounds -> matches -> submissions/disqualificaciones y
+    // qualifying_rounds -> participantes/submissions caen en cascada
+    // (ver ON DELETE CASCADE en schema.sql) al borrar el torneo.
+    this.db.connection.prepare('DELETE FROM tournaments WHERE id = ?').run(id.toString());
+  }
+
+  async reset(id: EntityId): Promise<void> {
+    this.db.connection.prepare('DELETE FROM rounds WHERE tournament_id = ?').run(id.toString());
+    this.db.connection.prepare('DELETE FROM qualifying_rounds WHERE tournament_id = ?').run(id.toString());
+    this.db.connection
+      .prepare('UPDATE tournaments SET status = ? WHERE id = ?')
+      .run(TournamentStatus.DRAFT, id.toString());
+  }
+
   async findByMatchId(matchId: EntityId): Promise<Tournament | null> {
     const row = this.db.connection
       .prepare(

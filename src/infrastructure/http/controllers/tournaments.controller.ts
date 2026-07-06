@@ -1,4 +1,4 @@
-import { Body, Controller, Get, Inject, NotFoundException, Param, Post } from '@nestjs/common';
+import { Body, Controller, Delete, Get, Inject, NotFoundException, Param, Patch, Post } from '@nestjs/common';
 import { ApiTags, ApiOperation } from '@nestjs/swagger';
 import { CreateTournamentUseCase } from '../../../application/use-cases/create-tournament.use-case';
 import { StartTournamentUseCase } from '../../../application/use-cases/start-tournament.use-case';
@@ -6,12 +6,16 @@ import { SubmitQualifyingSolutionUseCase } from '../../../application/use-cases/
 import { JudgeQualifyingSubmissionUseCase } from '../../../application/use-cases/judge-qualifying-submission.use-case';
 import { FinalizeQualifyingRoundUseCase } from '../../../application/use-cases/finalize-qualifying-round.use-case';
 import { AdvanceToNextRoundUseCase } from '../../../application/use-cases/advance-to-next-round.use-case';
+import { RenameTournamentUseCase } from '../../../application/use-cases/rename-tournament.use-case';
+import { DeleteTournamentUseCase } from '../../../application/use-cases/delete-tournament.use-case';
+import { ResetTournamentUseCase } from '../../../application/use-cases/reset-tournament.use-case';
 import { EntityId } from '../../../domain/value-objects/entity-id';
 import { TournamentRepository } from '../../../application/ports/tournament.repository';
 import { QualifyingRoundRepository } from '../../../application/ports/qualifying-round.repository';
 import { TournamentPresenter } from '../presenters/tournament.presenter';
 import {
   CreateTournamentDto,
+  RenameTournamentDto,
   StartTournamentDto,
   SubmitSolutionDto,
   JudgeQualifyingVerdictDto,
@@ -29,6 +33,9 @@ export class TournamentsController {
     private readonly judgeQualifyingSubmission: JudgeQualifyingSubmissionUseCase,
     private readonly finalizeQualifyingRound: FinalizeQualifyingRoundUseCase,
     private readonly advanceToNextRound: AdvanceToNextRoundUseCase,
+    private readonly renameTournament: RenameTournamentUseCase,
+    private readonly deleteTournament: DeleteTournamentUseCase,
+    private readonly resetTournament: ResetTournamentUseCase,
     @Inject(TOURNAMENT_REPOSITORY) private readonly tournamentRepository: TournamentRepository,
     @Inject(QUALIFYING_ROUND_REPOSITORY)
     private readonly qualifyingRoundRepository: QualifyingRoundRepository,
@@ -58,6 +65,29 @@ export class TournamentsController {
     const tournament = await this.tournamentRepository.findById(EntityId.fromString(id));
     if (!tournament) throw new NotFoundException(`Torneo ${id} no encontrado`);
     return TournamentPresenter.toJSON(tournament);
+  }
+
+  @ApiOperation({ summary: 'Renombrar un torneo' })
+  @Patch(':id')
+  async rename(@Param('id') id: string, @Body() dto: RenameTournamentDto) {
+    const tournament = await this.renameTournament.execute({ tournamentId: id, name: dto.name });
+    return TournamentPresenter.toJSON(tournament);
+  }
+
+  @ApiOperation({ summary: 'Eliminar un torneo (y todo lo que dependa de él: rondas, matches, clasificatoria)' })
+  @Delete(':id')
+  async remove(@Param('id') id: string) {
+    await this.deleteTournament.execute({ tournamentId: id });
+    return { status: 'ok' };
+  }
+
+  @ApiOperation({
+    summary: 'Reiniciar un torneo: borra rondas/matches/clasificatoria y lo vuelve a DRAFT',
+  })
+  @Post(':id/reset')
+  async reset(@Param('id') id: string) {
+    await this.resetTournament.execute({ tournamentId: id });
+    return { status: 'ok' };
   }
 
   @ApiOperation({ summary: 'Consultar el estado de la ronda clasificatoria (si existe)' })

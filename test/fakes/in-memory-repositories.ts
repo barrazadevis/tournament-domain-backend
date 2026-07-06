@@ -65,6 +65,15 @@ export class InMemoryTournamentRepository implements TournamentRepository {
     }
     return null;
   }
+
+  async delete(id: EntityId): Promise<void> {
+    this.store.delete(id.toString());
+  }
+
+  async reset(id: EntityId): Promise<void> {
+    const tournament = this.store.get(id.toString());
+    tournament?.resetToDraft();
+  }
 }
 
 export class InMemoryBusinessCaseRepository implements BusinessCaseRepository {

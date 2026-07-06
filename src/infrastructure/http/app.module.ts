@@ -20,6 +20,9 @@ import { SubmitMatchSolutionUseCase } from '../../application/use-cases/submit-m
 import { JudgeMatchSubmissionUseCase } from '../../application/use-cases/judge-match-submission.use-case';
 import { AdvanceToNextRoundUseCase } from '../../application/use-cases/advance-to-next-round.use-case';
 import { ExpireMatchTimerUseCase } from '../../application/use-cases/expire-match-timer.use-case';
+import { RenameTournamentUseCase } from '../../application/use-cases/rename-tournament.use-case';
+import { DeleteTournamentUseCase } from '../../application/use-cases/delete-tournament.use-case';
+import { ResetTournamentUseCase } from '../../application/use-cases/reset-tournament.use-case';
 import { TeamsController } from './controllers/teams.controller';
 import { TournamentsController } from './controllers/tournaments.controller';
 import { MatchesController } from './controllers/matches.controller';
@@ -146,6 +149,21 @@ import {
       provide: ExpireMatchTimerUseCase,
       useFactory: (tournamentRepo: TournamentRepository) =>
         new ExpireMatchTimerUseCase(tournamentRepo),
+      inject: [TOURNAMENT_REPOSITORY],
+    },
+    {
+      provide: RenameTournamentUseCase,
+      useFactory: (tournamentRepo: TournamentRepository) => new RenameTournamentUseCase(tournamentRepo),
+      inject: [TOURNAMENT_REPOSITORY],
+    },
+    {
+      provide: DeleteTournamentUseCase,
+      useFactory: (tournamentRepo: TournamentRepository) => new DeleteTournamentUseCase(tournamentRepo),
+      inject: [TOURNAMENT_REPOSITORY],
+    },
+    {
+      provide: ResetTournamentUseCase,
+      useFactory: (tournamentRepo: TournamentRepository) => new ResetTournamentUseCase(tournamentRepo),
       inject: [TOURNAMENT_REPOSITORY],
     },
     { provide: TournamentEventBus, useClass: TournamentEventBus },
