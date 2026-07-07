@@ -12,5 +12,8 @@ export interface TeamRepository {
   findById(id: EntityId): Promise<Team | null>;
   findByIds(ids: EntityId[]): Promise<Team[]>;
   findByName(name: string): Promise<Team | null>;
+  findByCode(code: string): Promise<Team | null>;
   findAll(): Promise<Team[]>;
+  delete(id: EntityId): Promise<void>;
+  isInUse(id: EntityId): Promise<boolean>;
 }

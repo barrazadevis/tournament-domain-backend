@@ -1,5 +1,6 @@
-import { Body, Controller, Delete, Get, Inject, NotFoundException, Param, Patch, Post } from '@nestjs/common';
-import { ApiTags, ApiOperation } from '@nestjs/swagger';
+import { Body, ConflictException, Controller, Delete, Get, Inject, NotFoundException, Param, Patch, Post, UseGuards } from '@nestjs/common';
+import { ApiTags, ApiOperation, ApiBearerAuth } from '@nestjs/swagger';
+import { SessionAuthGuard } from '../guards/session-auth.guard';
 import { CreateTournamentUseCase } from '../../../application/use-cases/create-tournament.use-case';
 import { StartTournamentUseCase } from '../../../application/use-cases/start-tournament.use-case';
 import { SubmitQualifyingSolutionUseCase } from '../../../application/use-cases/submit-qualifying-solution.use-case';
@@ -42,6 +43,8 @@ export class TournamentsController {
   ) {}
 
   @ApiOperation({ summary: 'Crear un torneo vacío' })
+  @ApiBearerAuth()
+  @UseGuards(SessionAuthGuard)
   @Post()
   async create(@Body() dto: CreateTournamentDto) {
     const tournament = await this.createTournament.execute(dto);
@@ -68,6 +71,8 @@ export class TournamentsController {
   }
 
   @ApiOperation({ summary: 'Renombrar un torneo' })
+  @ApiBearerAuth()
+  @UseGuards(SessionAuthGuard)
   @Patch(':id')
   async rename(@Param('id') id: string, @Body() dto: RenameTournamentDto) {
     const tournament = await this.renameTournament.execute({ tournamentId: id, name: dto.name });
@@ -75,6 +80,8 @@ export class TournamentsController {
   }
 
   @ApiOperation({ summary: 'Eliminar un torneo (y todo lo que dependa de él: rondas, matches, clasificatoria)' })
+  @ApiBearerAuth()
+  @UseGuards(SessionAuthGuard)
   @Delete(':id')
   async remove(@Param('id') id: string) {
     await this.deleteTournament.execute({ tournamentId: id });
@@ -84,6 +91,8 @@ export class TournamentsController {
   @ApiOperation({
     summary: 'Reiniciar un torneo: borra rondas/matches/clasificatoria y lo vuelve a DRAFT',
   })
+  @ApiBearerAuth()
+  @UseGuards(SessionAuthGuard)
   @Post(':id/reset')
   async reset(@Param('id') id: string) {
     await this.resetTournament.execute({ tournamentId: id });
@@ -117,9 +126,15 @@ export class TournamentsController {
   @ApiOperation({
     summary: 'Iniciar el torneo (decide clasificatoria vs bracket directo según potencia de 2)',
   })
+  @ApiBearerAuth()
+  @UseGuards(SessionAuthGuard)
   @Post(':id/start')
   async start(@Param('id') id: string, @Body() dto: StartTournamentDto) {
-    return this.startTournament.execute({ tournamentId: id, ...dto });
+    try {
+      return await this.startTournament.execute({ tournamentId: id, ...dto });
+    } catch (error) {
+      throw new ConflictException((error as Error).message);
+    }
   }
 
   @ApiOperation({ summary: 'Enviar la solución de un equipo en la ronda clasificatoria' })
@@ -135,6 +150,8 @@ export class TournamentsController {
   }
 
   @ApiOperation({ summary: 'Aprobar o rechazar la submission de un equipo en la clasificatoria' })
+  @ApiBearerAuth()
+  @UseGuards(SessionAuthGuard)
   @Post(':id/qualifying-submissions/:teamId/verdict')
   async judgeQualifying(
     @Param('id') id: string,
@@ -151,12 +168,16 @@ export class TournamentsController {
   }
 
   @ApiOperation({ summary: 'Cerrar la clasificatoria y generar la ronda de Cuartos con los clasificados' })
+  @ApiBearerAuth()
+  @UseGuards(SessionAuthGuard)
   @Post(':id/qualifying-round/finalize')
   async finalizeQualifying(@Param('id') id: string) {
     return this.finalizeQualifyingRound.execute({ tournamentId: id });
   }
 
   @ApiOperation({ summary: 'Avanzar de ronda (empareja ganadores aleatoriamente, o cierra el torneo si era la final)' })
+  @ApiBearerAuth()
+  @UseGuards(SessionAuthGuard)
   @Post(':id/rounds/:order/advance')
   async advanceRound(
     @Param('id') id: string,

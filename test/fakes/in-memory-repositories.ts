@@ -43,8 +43,34 @@ export class InMemoryTeamRepository implements TeamRepository {
     return null;
   }
 
+  async findByCode(code: string): Promise<Team | null> {
+    const normalized = code.trim().toUpperCase();
+    for (const team of this.store.values()) {
+      if (team.getCode().toString() === normalized) return team;
+    }
+    return null;
+  }
+
   async findAll(): Promise<Team[]> {
     return [...this.store.values()];
+  }
+
+  async delete(id: EntityId): Promise<void> {
+    this.store.delete(id.toString());
+  }
+
+  /** Los tests marcan aquí qué equipos "ya están en un torneo" — el fake no
+   * tiene acceso a InMemoryTournamentRepository/InMemoryQualifyingRoundRepository
+   * para calcularlo solo (eso sí se prueba de verdad contra SQLite real en
+   * persistence.spec.ts). */
+  private readonly inUseIds = new Set<string>();
+
+  markInUse(id: string): void {
+    this.inUseIds.add(id);
+  }
+
+  async isInUse(id: EntityId): Promise<boolean> {
+    return this.inUseIds.has(id.toString());
   }
 }
 

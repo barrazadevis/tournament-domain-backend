@@ -4,6 +4,7 @@ import { Match } from './match';
 
 export enum TournamentStatus {
   DRAFT = 'DRAFT', // Configurando equipos y casos
+  QUALIFYING = 'QUALIFYING', // Ronda clasificatoria en curso (equipos no eran potencia de 2)
   IN_PROGRESS = 'IN_PROGRESS',
   FINISHED = 'FINISHED',
 }
@@ -19,6 +20,7 @@ export class Tournament {
   private name: string;
   private status: TournamentStatus = TournamentStatus.DRAFT;
   private readonly rounds: Round[] = [];
+  private pendingCaseIds: EntityId[] = [];
 
   constructor(id: EntityId, name: string) {
     if (!name.trim()) {
@@ -84,6 +86,20 @@ export class Tournament {
     this.status = TournamentStatus.IN_PROGRESS;
   }
 
+  /**
+   * Transición al arrancar la ronda clasificatoria (equipos no eran potencia
+   * de 2). A diferencia de `start()`, todavía no hay ninguna Round creada
+   * (esa se genera recién al cerrar la clasificatoria, ver
+   * FinalizeQualifyingRoundUseCase) — por eso es un método separado en vez
+   * de relajar el guard de `start()`.
+   */
+  enterQualifying(): void {
+    if (this.status !== TournamentStatus.DRAFT) {
+      throw new Error('El torneo ya fue iniciado');
+    }
+    this.status = TournamentStatus.QUALIFYING;
+  }
+
   finish(): void {
     this.status = TournamentStatus.FINISHED;
   }
@@ -98,6 +114,31 @@ export class Tournament {
   resetToDraft(): void {
     this.rounds.length = 0;
     this.status = TournamentStatus.DRAFT;
+    this.pendingCaseIds = [];
+  }
+
+  /**
+   * Casos de negocio ya creados al iniciar el torneo, pendientes de
+   * consumirse uno por ronda (`consumeNextCaseId()`) a medida que el
+   * profesor avanza — así cada ronda tiene un caso distinto en vez de
+   * reutilizar el de la ronda anterior. El primer caso (clasificatoria o
+   * ronda inicial del bracket) NO pasa por aquí, se asigna directo al
+   * iniciar; esto guarda solo el resto.
+   */
+  setPendingCaseIds(ids: EntityId[]): void {
+    this.pendingCaseIds = [...ids];
+  }
+
+  getPendingCaseIds(): ReadonlyArray<EntityId> {
+    return this.pendingCaseIds;
+  }
+
+  consumeNextCaseId(): EntityId {
+    const next = this.pendingCaseIds.shift();
+    if (!next) {
+      throw new Error('No hay más casos planificados para las siguientes rondas');
+    }
+    return next;
   }
 
   static rehydrate(props: {
@@ -105,11 +146,13 @@ export class Tournament {
     name: string;
     status: TournamentStatus;
     rounds: Round[];
+    pendingCaseIds?: EntityId[];
   }): Tournament {
     const tournament = new Tournament(props.id, props.name);
     tournament.status = props.status;
     props.rounds.forEach((round) => tournament.rounds.push(round));
     tournament.rounds.sort((a, b) => a.getOrder() - b.getOrder());
+    tournament.pendingCaseIds = props.pendingCaseIds ? [...props.pendingCaseIds] : [];
     return tournament;
   }
 }

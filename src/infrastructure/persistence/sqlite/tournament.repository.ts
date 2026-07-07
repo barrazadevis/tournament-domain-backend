@@ -14,6 +14,7 @@ interface TournamentRow {
   id: string;
   name: string;
   status: string;
+  pending_case_ids: string;
 }
 
 interface RoundRow {
@@ -66,11 +67,14 @@ export class SqliteTournamentRepository implements TournamentRepository {
 
     const rounds = roundRows.map((roundRow) => this.loadRound(roundRow));
 
+    const pendingCaseIds: string[] = JSON.parse(tournamentRow.pending_case_ids || '[]');
+
     return Tournament.rehydrate({
       id: EntityId.fromString(tournamentRow.id),
       name: tournamentRow.name,
       status: tournamentRow.status as TournamentStatus,
       rounds,
+      pendingCaseIds: pendingCaseIds.map((id) => EntityId.fromString(id)),
     });
   }
 
@@ -98,7 +102,7 @@ export class SqliteTournamentRepository implements TournamentRepository {
     this.db.connection.prepare('DELETE FROM rounds WHERE tournament_id = ?').run(id.toString());
     this.db.connection.prepare('DELETE FROM qualifying_rounds WHERE tournament_id = ?').run(id.toString());
     this.db.connection
-      .prepare('UPDATE tournaments SET status = ? WHERE id = ?')
+      .prepare("UPDATE tournaments SET status = ?, pending_case_ids = '[]' WHERE id = ?")
       .run(TournamentStatus.DRAFT, id.toString());
   }
 
@@ -151,13 +155,17 @@ export class SqliteTournamentRepository implements TournamentRepository {
   }
 
   private upsertTournamentRow(tournament: Tournament): void {
+    const pendingCaseIdsJson = JSON.stringify(tournament.getPendingCaseIds().map((id) => id.toString()));
     this.db.connection
       .prepare(
-        `INSERT INTO tournaments (id, name, status)
-         VALUES (?, ?, ?)
-         ON CONFLICT(id) DO UPDATE SET name = excluded.name, status = excluded.status`,
+        `INSERT INTO tournaments (id, name, status, pending_case_ids)
+         VALUES (?, ?, ?, ?)
+         ON CONFLICT(id) DO UPDATE SET
+           name = excluded.name,
+           status = excluded.status,
+           pending_case_ids = excluded.pending_case_ids`,
       )
-      .run(tournament.getId().toString(), tournament.getName(), tournament.getStatus());
+      .run(tournament.getId().toString(), tournament.getName(), tournament.getStatus(), pendingCaseIdsJson);
   }
 
   private upsertRoundRow(round: Round, tournamentId: EntityId): void {

@@ -1,4 +1,5 @@
 import { EntityId } from '../value-objects/entity-id';
+import { TeamCode } from '../value-objects/team-code';
 
 export interface TeamMember {
   fullName: string;
@@ -14,10 +15,17 @@ export class Team {
   private readonly id: EntityId;
   private readonly name: string;
   private readonly members: TeamMember[];
+  private readonly code: TeamCode;
   private readonly logo: string | null;
   private eliminatedAt: Date | null = null;
 
-  constructor(id: EntityId, name: string, members: TeamMember[], logo: string | null = null) {
+  constructor(
+    id: EntityId,
+    name: string,
+    members: TeamMember[],
+    code: TeamCode = TeamCode.generate(),
+    logo: string | null = null,
+  ) {
     if (!name || name.trim().length === 0) {
       throw new Error('El nombre del equipo no puede estar vacío');
     }
@@ -27,6 +35,7 @@ export class Team {
     this.id = id;
     this.name = name.trim();
     this.members = [...members];
+    this.code = code;
     this.logo = logo;
   }
 
@@ -44,6 +53,10 @@ export class Team {
 
   getLogo(): string | null {
     return this.logo;
+  }
+
+  getCode(): TeamCode {
+    return this.code;
   }
 
   isEliminated(): boolean {
@@ -66,10 +79,11 @@ export class Team {
     id: EntityId;
     name: string;
     members: TeamMember[];
+    code: TeamCode;
     eliminatedAt: Date | null;
     logo?: string | null;
   }): Team {
-    const team = new Team(props.id, props.name, props.members, props.logo ?? null);
+    const team = new Team(props.id, props.name, props.members, props.code, props.logo ?? null);
     team.eliminatedAt = props.eliminatedAt;
     return team;
   }

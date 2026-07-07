@@ -1,6 +1,7 @@
 import { DatabaseSync } from 'node:sqlite';
 import { readFileSync } from 'node:fs';
 import { join } from 'node:path';
+import { TeamCode } from '../../../domain/value-objects/team-code';
 
 /**
  * TournamentDatabase: única responsabilidad es abrir la conexión y aplicar
@@ -40,6 +41,39 @@ export class TournamentDatabase {
       this.connection.exec('ALTER TABLE teams ADD COLUMN logo TEXT');
     } catch {
       // La columna ya existe — no hay nada que migrar.
+    }
+    try {
+      this.connection.exec('ALTER TABLE teams ADD COLUMN code TEXT');
+    } catch {
+      // La columna ya existe — no hay nada que migrar.
+    }
+    try {
+      this.connection.exec("ALTER TABLE tournaments ADD COLUMN pending_case_ids TEXT NOT NULL DEFAULT '[]'");
+    } catch {
+      // La columna ya existe — no hay nada que migrar.
+    }
+    this.backfillMissingTeamCodes();
+  }
+
+  /**
+   * Equipos registrados antes de que existiera `code` (columna recién
+   * agregada arriba) se quedan con `code IS NULL` tras el ALTER TABLE — sin
+   * esto, quedarían para siempre sin forma de reingresar por código. Corre
+   * en cada boot pero no hace nada una vez que ninguna fila tiene el
+   * código en null (la condición depende de los datos, no de si el ALTER
+   * TABLE de arriba lanzó o no).
+   */
+  private backfillMissingTeamCodes(): void {
+    const rows = this.connection.prepare('SELECT id FROM teams WHERE code IS NULL').all() as unknown as Array<{
+      id: string;
+    }>;
+
+    for (const row of rows) {
+      let code: string;
+      do {
+        code = TeamCode.generate().toString();
+      } while (this.connection.prepare('SELECT 1 FROM teams WHERE code = ?').get(code));
+      this.connection.prepare('UPDATE teams SET code = ? WHERE id = ?').run(code, row.id);
     }
   }
 

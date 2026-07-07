@@ -16,6 +16,7 @@ import { UserRepository } from '../../application/ports/user.repository';
 import { SessionRepository } from '../../application/ports/session.repository';
 import { PasswordHasher } from '../../application/ports/password-hasher';
 import { RegisterTeamUseCase } from '../../application/use-cases/register-team.use-case';
+import { DeleteTeamUseCase } from '../../application/use-cases/delete-team.use-case';
 import { RegisterUserUseCase } from '../../application/use-cases/register-user.use-case';
 import { BootstrapUserUseCase } from '../../application/use-cases/bootstrap-user.use-case';
 import { LoginUseCase } from '../../application/use-cases/login.use-case';
@@ -100,6 +101,11 @@ import {
       inject: [TEAM_REPOSITORY],
     },
     {
+      provide: DeleteTeamUseCase,
+      useFactory: (teamRepo: TeamRepository) => new DeleteTeamUseCase(teamRepo),
+      inject: [TEAM_REPOSITORY],
+    },
+    {
       provide: CreateTournamentUseCase,
       useFactory: (tournamentRepo: TournamentRepository) =>
         new CreateTournamentUseCase(tournamentRepo),
@@ -138,8 +144,9 @@ import {
         tournamentRepo: TournamentRepository,
         teamRepo: TeamRepository,
         qualifyingRepo: QualifyingRoundRepository,
-      ) => new FinalizeQualifyingRoundUseCase(tournamentRepo, teamRepo, qualifyingRepo),
-      inject: [TOURNAMENT_REPOSITORY, TEAM_REPOSITORY, QUALIFYING_ROUND_REPOSITORY],
+        caseRepo: BusinessCaseRepository,
+      ) => new FinalizeQualifyingRoundUseCase(tournamentRepo, teamRepo, qualifyingRepo, caseRepo),
+      inject: [TOURNAMENT_REPOSITORY, TEAM_REPOSITORY, QUALIFYING_ROUND_REPOSITORY, BUSINESS_CASE_REPOSITORY],
     },
     {
       provide: StartMatchUseCase,
@@ -160,9 +167,9 @@ import {
     },
     {
       provide: AdvanceToNextRoundUseCase,
-      useFactory: (tournamentRepo: TournamentRepository) =>
-        new AdvanceToNextRoundUseCase(tournamentRepo),
-      inject: [TOURNAMENT_REPOSITORY],
+      useFactory: (tournamentRepo: TournamentRepository, caseRepo: BusinessCaseRepository) =>
+        new AdvanceToNextRoundUseCase(tournamentRepo, caseRepo),
+      inject: [TOURNAMENT_REPOSITORY, BUSINESS_CASE_REPOSITORY],
     },
     {
       provide: RestartMatchUseCase,

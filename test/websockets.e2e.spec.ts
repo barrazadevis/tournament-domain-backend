@@ -9,16 +9,24 @@ import {
   BUSINESS_CASE_REPOSITORY,
   QUALIFYING_ROUND_REPOSITORY,
   TOURNAMENT_DATABASE,
+  USER_REPOSITORY,
+  SESSION_REPOSITORY,
+  PASSWORD_HASHER,
 } from '../src/infrastructure/http/tokens';
 import {
   InMemoryTeamRepository,
   InMemoryTournamentRepository,
   InMemoryBusinessCaseRepository,
   InMemoryQualifyingRoundRepository,
+  InMemoryUserRepository,
+  InMemorySessionRepository,
+  FakePasswordHasher,
 } from './fakes/in-memory-repositories';
 import { RegisterTeamUseCase } from '../src/application/use-cases/register-team.use-case';
 import { CreateTournamentUseCase } from '../src/application/use-cases/create-tournament.use-case';
 import { StartTournamentUseCase } from '../src/application/use-cases/start-tournament.use-case';
+import { BootstrapUserUseCase } from '../src/application/use-cases/bootstrap-user.use-case';
+import { RegisterUserUseCase } from '../src/application/use-cases/register-user.use-case';
 
 jest.setTimeout(15000);
 
@@ -31,10 +39,14 @@ describe('Tournament WebSockets (E2E)', () => {
   let baseUrl: string;
   let teamRepository: InMemoryTeamRepository;
   let tournamentRepository: InMemoryTournamentRepository;
+  let profesorToken: string;
 
   beforeEach(async () => {
     teamRepository = new InMemoryTeamRepository();
     tournamentRepository = new InMemoryTournamentRepository();
+    const userRepository = new InMemoryUserRepository();
+    const sessionRepository = new InMemorySessionRepository();
+    const passwordHasher = new FakePasswordHasher();
 
     const moduleRef = await Test.createTestingModule({
       imports: [AppModule],
@@ -49,6 +61,12 @@ describe('Tournament WebSockets (E2E)', () => {
       .useValue(new InMemoryBusinessCaseRepository())
       .overrideProvider(QUALIFYING_ROUND_REPOSITORY)
       .useValue(new InMemoryQualifyingRoundRepository())
+      .overrideProvider(USER_REPOSITORY)
+      .useValue(userRepository)
+      .overrideProvider(SESSION_REPOSITORY)
+      .useValue(sessionRepository)
+      .overrideProvider(PASSWORD_HASHER)
+      .useValue(passwordHasher)
       .compile();
 
     app = moduleRef.createNestApplication();
@@ -57,6 +75,17 @@ describe('Tournament WebSockets (E2E)', () => {
     const address = server.address();
     const port = typeof address === 'object' && address ? address.port : 0;
     baseUrl = `http://localhost:${port}`;
+
+    const bootstrapUser = new BootstrapUserUseCase(
+      userRepository,
+      sessionRepository,
+      new RegisterUserUseCase(userRepository, passwordHasher),
+    );
+    const bootstrapResult = await bootstrapUser.execute({
+      email: 'profesor@colegio.edu',
+      password: 'claveSegura1',
+    });
+    profesorToken = bootstrapResult.token;
   });
 
   afterEach(async () => {
@@ -79,8 +108,7 @@ describe('Tournament WebSockets (E2E)', () => {
     await startTournament.execute({
       tournamentId: tournament.getId().toString(),
       teamIds: [teamA.getId().toString(), teamB.getId().toString()],
-      caseTitle: 'Bono',
-      caseDescription: 'Descripción',
+      cases: [{ title: 'Bono', description: 'Descripción' }],
       timerDurationSeconds: 60,
     });
 
@@ -88,7 +116,7 @@ describe('Tournament WebSockets (E2E)', () => {
     const match = savedTournament!.getRounds()[0].getMatches()[0];
 
     const viewerSocket = io(`${baseUrl}/viewer`, { transports: ['websocket'] });
-    const judgeSocket = io(`${baseUrl}/judge`, { transports: ['websocket'] });
+    const judgeSocket = io(`${baseUrl}/judge`, { transports: ['websocket'], auth: { token: profesorToken } });
 
     await Promise.all([
       waitForEvent(viewerSocket, 'connect'),
@@ -137,8 +165,7 @@ describe('Tournament WebSockets (E2E)', () => {
     await startTournament.execute({
       tournamentId: tournament.getId().toString(),
       teamIds: [teamA.getId().toString(), teamB.getId().toString()],
-      caseTitle: 'Bono',
-      caseDescription: 'Descripción',
+      cases: [{ title: 'Bono', description: 'Descripción' }],
       timerDurationSeconds: 60,
     });
 
@@ -146,7 +173,7 @@ describe('Tournament WebSockets (E2E)', () => {
     const match = savedTournament!.getRounds()[0].getMatches()[0];
 
     const teamSocket = io(`${baseUrl}/team`, { transports: ['websocket'] });
-    const judgeSocket = io(`${baseUrl}/judge`, { transports: ['websocket'] });
+    const judgeSocket = io(`${baseUrl}/judge`, { transports: ['websocket'], auth: { token: profesorToken } });
     await Promise.all([waitForEvent(teamSocket, 'connect'), waitForEvent(judgeSocket, 'connect')]);
 
     judgeSocket.emit('start_match', {
@@ -171,5 +198,24 @@ describe('Tournament WebSockets (E2E)', () => {
 
     teamSocket.close();
     judgeSocket.close();
+  });
+
+  it('rechaza la conexión a /judge sin token válido (bug: namespace sin autenticar)', async () => {
+    const noTokenSocket = io(`${baseUrl}/judge`, { transports: ['websocket'] });
+    const noTokenError = await waitForEvent<Error>(noTokenSocket, 'connect_error');
+    expect(noTokenError.message).toBe('No autorizado');
+    noTokenSocket.close();
+
+    const badTokenSocket = io(`${baseUrl}/judge`, {
+      transports: ['websocket'],
+      auth: { token: 'token-inventado' },
+    });
+    const badTokenError = await waitForEvent<Error>(badTokenSocket, 'connect_error');
+    expect(badTokenError.message).toBe('No autorizado');
+    badTokenSocket.close();
+
+    const validSocket = io(`${baseUrl}/judge`, { transports: ['websocket'], auth: { token: profesorToken } });
+    await waitForEvent(validSocket, 'connect');
+    validSocket.close();
   });
 });

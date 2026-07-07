@@ -3,6 +3,7 @@ import { Match } from '../../domain/entities/match';
 import { Round } from '../../domain/entities/round';
 import { BracketAdvancementService } from '../../domain/services/bracket-advancement.service';
 import { TournamentRepository } from '../ports/tournament.repository';
+import { BusinessCaseRepository } from '../ports/business-case.repository';
 
 export interface AdvanceToNextRoundInput {
   tournamentId: string;
@@ -24,7 +25,10 @@ export type AdvanceToNextRoundOutput =
  * el emparejamiento aleatorio de los ganadores para armar la siguiente ronda.
  */
 export class AdvanceToNextRoundUseCase {
-  constructor(private readonly tournamentRepository: TournamentRepository) {}
+  constructor(
+    private readonly tournamentRepository: TournamentRepository,
+    private readonly businessCaseRepository: BusinessCaseRepository,
+  ) {}
 
   async execute(input: AdvanceToNextRoundInput): Promise<AdvanceToNextRoundOutput> {
     const tournament = await this.tournamentRepository.findById(
@@ -47,7 +51,11 @@ export class AdvanceToNextRoundUseCase {
     }
 
     const pairings = BracketAdvancementService.computeNextRoundPairings(currentRound);
-    const businessCase = currentRound.getMatches()[0].getBusinessCase(); // mismo caso base de la ronda anterior; el profesor puede reemplazarlo aparte si quiere uno nuevo
+    const nextCaseId = tournament.consumeNextCaseId();
+    const businessCase = await this.businessCaseRepository.findById(nextCaseId);
+    if (!businessCase) {
+      throw new Error(`Caso planificado para la ronda "${input.nextRoundName}" no encontrado`);
+    }
 
     const nextRound = new Round(
       EntityId.generate(),

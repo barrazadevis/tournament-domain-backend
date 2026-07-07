@@ -6,7 +6,8 @@ CREATE TABLE IF NOT EXISTS teams (
   name TEXT NOT NULL,
   members_json TEXT NOT NULL,
   eliminated_at TEXT,
-  logo TEXT
+  logo TEXT,
+  code TEXT
 );
 
 CREATE TABLE IF NOT EXISTS business_cases (
@@ -19,7 +20,8 @@ CREATE TABLE IF NOT EXISTS business_cases (
 CREATE TABLE IF NOT EXISTS tournaments (
   id TEXT PRIMARY KEY,
   name TEXT NOT NULL,
-  status TEXT NOT NULL
+  status TEXT NOT NULL,
+  pending_case_ids TEXT NOT NULL DEFAULT '[]'
 );
 
 CREATE TABLE IF NOT EXISTS rounds (

@@ -3,6 +3,7 @@ import { BracketGenerationService } from '../../domain/services/bracket-generati
 import { TournamentRepository } from '../ports/tournament.repository';
 import { TeamRepository } from '../ports/team.repository';
 import { QualifyingRoundRepository } from '../ports/qualifying-round.repository';
+import { BusinessCaseRepository } from '../ports/business-case.repository';
 
 export interface FinalizeQualifyingRoundInput {
   tournamentId: string;
@@ -23,6 +24,7 @@ export class FinalizeQualifyingRoundUseCase {
     private readonly tournamentRepository: TournamentRepository,
     private readonly teamRepository: TeamRepository,
     private readonly qualifyingRoundRepository: QualifyingRoundRepository,
+    private readonly businessCaseRepository: BusinessCaseRepository,
   ) {}
 
   async execute(input: FinalizeQualifyingRoundInput): Promise<FinalizeQualifyingRoundOutput> {
@@ -41,11 +43,17 @@ export class FinalizeQualifyingRoundUseCase {
     const qualifiedTeamIds = qualifyingRound.computeQualifiers();
     const qualifiedTeams = await this.teamRepository.findByIds(qualifiedTeamIds);
 
+    const nextCaseId = tournament.consumeNextCaseId();
+    const businessCase = await this.businessCaseRepository.findById(nextCaseId);
+    if (!businessCase) {
+      throw new Error('El caso planificado para Cuartos de Final no se encontró');
+    }
+
     const round = BracketGenerationService.generateInitialRound(
       qualifiedTeams,
       EntityId.generate(),
       'Cuartos de Final',
-      qualifyingRound.getBusinessCase(),
+      businessCase,
       qualifyingRound.getTimerDurationSeconds(),
     );
 

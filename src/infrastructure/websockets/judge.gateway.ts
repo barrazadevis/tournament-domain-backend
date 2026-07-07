@@ -1,4 +1,6 @@
+import { Inject } from '@nestjs/common';
 import { MessageBody, SubscribeMessage, WebSocketGateway } from '@nestjs/websockets';
+import { Server, Socket } from 'socket.io';
 import { BaseTournamentGateway } from './base-tournament.gateway';
 import { TournamentEventBus } from './tournament-event-bus';
 import { StartMatchUseCase } from '../../application/use-cases/start-match.use-case';
@@ -6,6 +8,8 @@ import { JudgeMatchSubmissionUseCase } from '../../application/use-cases/judge-m
 import { AdvanceToNextRoundUseCase } from '../../application/use-cases/advance-to-next-round.use-case';
 import { RestartMatchUseCase } from '../../application/use-cases/restart-match.use-case';
 import { MatchTimerService } from './match-timer.service';
+import { SessionRepository } from '../../application/ports/session.repository';
+import { SESSION_REPOSITORY } from '../http/tokens';
 
 interface StartMatchPayload {
   matchId: string;
@@ -34,6 +38,16 @@ interface AdvanceRoundPayload {
  * para iniciar un match (arranca el timer server-side), dar veredicto, y
  * avanzar de ronda — refleja la tabla de roles definida en el diseño
  * original (Team/Judge/Viewer).
+ *
+ * A diferencia de TeamGateway/ViewerGateway, este SÍ requiere sesión: sin
+ * esto, cualquiera que abriera una conexión de socket a `/judge` conociendo
+ * el tournamentId (visible en su propia URL) podría emitir `start_match`,
+ * `judge_verdict`, etc. como si fuera el profesor — el REST de
+ * TournamentsController/MatchesController ya está protegido con
+ * SessionAuthGuard, pero estas acciones nunca pasan por REST, van por acá.
+ * La validación es solo en el handshake (una vez, al conectar) — no en cada
+ * mensaje — igual que el resto de la app basa su sesión en un token opaco
+ * verificado contra SQLite, no en un JWT firmado por request.
  */
 @WebSocketGateway({ namespace: '/judge', cors: { origin: '*' } })
 export class JudgeGateway extends BaseTournamentGateway {
@@ -44,8 +58,24 @@ export class JudgeGateway extends BaseTournamentGateway {
     private readonly advanceToNextRound: AdvanceToNextRoundUseCase,
     private readonly restartMatch: RestartMatchUseCase,
     private readonly matchTimer: MatchTimerService,
+    @Inject(SESSION_REPOSITORY) private readonly sessionRepository: SessionRepository,
   ) {
     super(eventBus);
+  }
+
+  afterInit(server: Server): void {
+    super.afterInit(server);
+    server.use((socket: Socket, next) => {
+      const token = socket.handshake.auth?.token as string | undefined;
+      if (!token) {
+        next(new Error('No autorizado'));
+        return;
+      }
+      this.sessionRepository
+        .findByToken(token)
+        .then((session) => next(session ? undefined : new Error('No autorizado')))
+        .catch(() => next(new Error('No autorizado')));
+    });
   }
 
   @SubscribeMessage('start_match')

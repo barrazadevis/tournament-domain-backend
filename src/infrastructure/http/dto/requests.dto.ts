@@ -1,4 +1,16 @@
-import { IsArray, IsBoolean, IsEmail, IsInt, IsOptional, IsString, Min, MinLength, ArrayMinSize } from 'class-validator';
+import {
+  IsArray,
+  IsBoolean,
+  IsEmail,
+  IsInt,
+  IsOptional,
+  IsString,
+  Min,
+  MinLength,
+  ArrayMinSize,
+  ValidateNested,
+} from 'class-validator';
+import { Type } from 'class-transformer';
 import { ApiProperty, ApiPropertyOptional } from '@nestjs/swagger';
 
 export class RegisterTeamDto {
@@ -18,6 +30,13 @@ export class RegisterTeamDto {
   logo?: string;
 }
 
+export class RejoinTeamDto {
+  @ApiProperty({ example: 'XK7M2P', description: 'Código único que se mostró al registrar el equipo' })
+  @IsString()
+  @MinLength(4)
+  code!: string;
+}
+
 export class CreateTournamentDto {
   @ApiProperty({ example: 'Torneo Eliminatorio de Casos - Grupo A' })
   @IsString()
@@ -30,6 +49,16 @@ export class RenameTournamentDto {
   name!: string;
 }
 
+export class StartTournamentCaseDto {
+  @ApiProperty({ example: 'Cálculo de bono de vendedores' })
+  @IsString()
+  title!: string;
+
+  @ApiProperty({ example: 'Diseñar el ciclo para calcular el bono de 20 vendedores según sus ventas' })
+  @IsString()
+  description!: string;
+}
+
 export class StartTournamentDto {
   @ApiProperty({
     description: 'IDs de los equipos inscritos. Si no es potencia de 2, arranca la clasificatoria.',
@@ -40,13 +69,15 @@ export class StartTournamentDto {
   @IsString({ each: true })
   teamIds!: string[];
 
-  @ApiProperty({ example: 'Cálculo de bono de vendedores' })
-  @IsString()
-  caseTitle!: string;
-
-  @ApiProperty({ example: 'Diseñar el ciclo para calcular el bono de 20 vendedores según sus ventas' })
-  @IsString()
-  caseDescription!: string;
+  @ApiProperty({
+    description: 'Un caso por ronda (incluyendo la clasificatoria si aplica), en orden.',
+    type: [StartTournamentCaseDto],
+  })
+  @IsArray()
+  @ArrayMinSize(1)
+  @ValidateNested({ each: true })
+  @Type(() => StartTournamentCaseDto)
+  cases!: StartTournamentCaseDto[];
 
   @ApiProperty({ example: 300, description: 'Duración del timer en segundos' })
   @IsInt()

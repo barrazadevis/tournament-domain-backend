@@ -1,4 +1,5 @@
 import { EntityId } from '../../domain/value-objects/entity-id';
+import { TeamCode } from '../../domain/value-objects/team-code';
 import { Team, TeamMember } from '../../domain/entities/team';
 import { TeamRepository } from '../ports/team.repository';
 
@@ -8,30 +9,39 @@ export interface RegisterTeamInput {
   logo?: string;
 }
 
+const MAX_CODE_GENERATION_ATTEMPTS = 5;
+
 /**
- * Find-or-create por nombre (case/whitespace-insensitive): si un equipo con
- * ese nombre ya existe, se reutiliza — esto es lo que permite reingresar
- * desde otro dispositivo (basta con escribir el mismo nombre) y evita
- * duplicados accidentales. `memberNames` del intento repetido se ignora a
- * propósito; gana la lista de integrantes original.
+ * Siempre crea un equipo nuevo — YA NO reutiliza uno existente por nombre.
  *
- * Riesgo aceptado: dos equipos físicos distintos que elijan el mismo nombre
- * colisionan y comparten identidad. Es el trade-off de identificar equipos
- * por nombre en vez de por código/token — no se mitiga aquí.
+ * Antes hacía find-or-create por nombre (case/whitespace-insensitive) para
+ * permitir reingreso desde otro dispositivo sin código. Se revirtió a
+ * pedido explícito del usuario: cualquiera podía escribir el nombre exacto
+ * de un equipo rival y entrar COMO ese equipo para sabotearlo (enviar
+ * soluciones basura). El reingreso ahora es por `TeamCode` (ver
+ * `TeamsController.rejoin` / `TeamRepository.findByCode`), visible solo
+ * para el equipo dueño y el profesor — nombres duplicados entre equipos
+ * distintos son ahora legítimos y sin riesgo, porque la identidad ya no
+ * depende del nombre.
  */
 export class RegisterTeamUseCase {
   constructor(private readonly teamRepository: TeamRepository) {}
 
   async execute(input: RegisterTeamInput): Promise<Team> {
-    const existing = await this.teamRepository.findByName(input.name);
-    if (existing) {
-      return existing;
-    }
-
     const members: TeamMember[] = input.memberNames.map((fullName) => ({ fullName }));
-    const team = new Team(EntityId.generate(), input.name, members, input.logo ?? null);
+    const code = await this.generateUniqueCode();
+    const team = new Team(EntityId.generate(), input.name, members, code, input.logo ?? null);
 
     await this.teamRepository.save(team);
     return team;
+  }
+
+  private async generateUniqueCode(): Promise<TeamCode> {
+    for (let attempt = 0; attempt < MAX_CODE_GENERATION_ATTEMPTS; attempt++) {
+      const code = TeamCode.generate();
+      const existing = await this.teamRepository.findByCode(code.toString());
+      if (!existing) return code;
+    }
+    throw new Error('No se pudo generar un código único para el equipo, intenta de nuevo');
   }
 }

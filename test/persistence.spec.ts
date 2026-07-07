@@ -60,6 +60,42 @@ describe('Persistencia SQLite (integración)', () => {
     expect(loaded!.isEliminated()).toBe(false);
   });
 
+  it('genera un código único al construir un Team y lo recupera vía findByCode', async () => {
+    const team = new Team(EntityId.generate(), 'Equipo Con Código', [{ fullName: 'Ana' }]);
+    await teamRepository.save(team);
+
+    const byId = await teamRepository.findById(team.getId());
+    expect(byId!.getCode().equals(team.getCode())).toBe(true);
+
+    const byCode = await teamRepository.findByCode(team.getCode().toString());
+    expect(byCode!.getId().equals(team.getId())).toBe(true);
+  });
+
+  it('isInUse: false para un equipo libre, true para uno que ya juega un match; delete solo borra el libre', async () => {
+    const freeTeam = new Team(EntityId.generate(), 'Equipo Libre', [{ fullName: 'Ana' }]);
+    const teamA = new Team(EntityId.generate(), 'Equipo A', [{ fullName: 'Beto' }]);
+    const teamB = new Team(EntityId.generate(), 'Equipo B', [{ fullName: 'Caro' }]);
+    await teamRepository.save(freeTeam);
+    await teamRepository.save(teamA);
+    await teamRepository.save(teamB);
+
+    expect(await teamRepository.isInUse(freeTeam.getId())).toBe(false);
+    expect(await teamRepository.isInUse(teamA.getId())).toBe(false);
+
+    const tournament = new Tournament(EntityId.generate(), 'Torneo para isInUse');
+    const round = new Round(EntityId.generate(), 'Final', 0);
+    round.addMatch(new Match(EntityId.generate(), 'Final', teamA.getId(), teamB.getId(), buildCase(), 60));
+    tournament.addRound(round);
+    await tournamentRepository.save(tournament);
+
+    expect(await teamRepository.isInUse(teamA.getId())).toBe(true);
+    expect(await teamRepository.isInUse(teamB.getId())).toBe(true);
+    expect(await teamRepository.isInUse(freeTeam.getId())).toBe(false);
+
+    await teamRepository.delete(freeTeam.getId());
+    expect(await teamRepository.findById(freeTeam.getId())).toBeNull();
+  });
+
   it('persiste el estado de eliminación de un Team', async () => {
     const team = new Team(EntityId.generate(), 'Equipo X', [{ fullName: 'Juan' }]);
     team.eliminate();

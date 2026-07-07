@@ -1,5 +1,6 @@
-import { Body, Controller, Get, Inject, NotFoundException, Param, Post } from '@nestjs/common';
-import { ApiTags, ApiOperation } from '@nestjs/swagger';
+import { Body, Controller, Get, Inject, NotFoundException, Param, Post, UseGuards } from '@nestjs/common';
+import { ApiTags, ApiOperation, ApiBearerAuth } from '@nestjs/swagger';
+import { SessionAuthGuard } from '../guards/session-auth.guard';
 import { StartMatchUseCase } from '../../../application/use-cases/start-match.use-case';
 import { SubmitMatchSolutionUseCase } from '../../../application/use-cases/submit-match-solution.use-case';
 import { JudgeMatchSubmissionUseCase } from '../../../application/use-cases/judge-match-submission.use-case';
@@ -53,6 +54,8 @@ export class MatchesController {
   }
 
   @ApiOperation({ summary: 'Iniciar un match (arranca el timer)' })
+  @ApiBearerAuth()
+  @UseGuards(SessionAuthGuard)
   @Post(':matchId/start')
   async start(@Param('matchId') matchId: string) {
     await this.startMatch.execute({ matchId, now: new Date() });
@@ -75,6 +78,8 @@ export class MatchesController {
   }
 
   @ApiOperation({ summary: 'Aprobar o rechazar la submission de un equipo en un match' })
+  @ApiBearerAuth()
+  @UseGuards(SessionAuthGuard)
   @Post(':matchId/verdict')
   async judge(@Param('matchId') matchId: string, @Body() dto: JudgeVerdictDto) {
     await this.judgeMatchSubmission.execute({
@@ -89,6 +94,8 @@ export class MatchesController {
   @ApiOperation({
     summary: 'Repetir un match que terminó sin ganador y sin ninguna submission (silencio total)',
   })
+  @ApiBearerAuth()
+  @UseGuards(SessionAuthGuard)
   @Post(':matchId/restart')
   async restart(@Param('matchId') matchId: string) {
     await this.restartMatch.execute({ matchId });

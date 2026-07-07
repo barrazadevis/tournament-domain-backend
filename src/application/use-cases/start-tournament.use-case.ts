@@ -1,6 +1,7 @@
 import { EntityId } from '../../domain/value-objects/entity-id';
 import { BusinessCase, RequiredStructureType } from '../../domain/entities/business-case';
 import { QualifyingRound } from '../../domain/entities/qualifying-round';
+import { TournamentStatus } from '../../domain/entities/tournament';
 import { PowerOfTwoMath } from '../../domain/services/power-of-two-math';
 import { BracketGenerationService } from '../../domain/services/bracket-generation.service';
 import { TournamentRepository } from '../ports/tournament.repository';
@@ -8,12 +9,24 @@ import { TeamRepository } from '../ports/team.repository';
 import { BusinessCaseRepository } from '../ports/business-case.repository';
 import { QualifyingRoundRepository } from '../ports/qualifying-round.repository';
 
+export interface StartTournamentCaseInput {
+  title: string;
+  description: string;
+}
+
 export interface StartTournamentInput {
   tournamentId: string;
   teamIds: string[];
-  caseTitle: string;
-  caseDescription: string;
+  cases: StartTournamentCaseInput[];
   timerDurationSeconds: number;
+}
+
+/** Cuántos casos hacen falta: uno por ronda, incluyendo la clasificatoria si aplica. */
+export function expectedCaseCount(teamCount: number): number {
+  const qualifyingNeeded = !PowerOfTwoMath.isPowerOfTwo(teamCount);
+  const bracketSize = qualifyingNeeded ? PowerOfTwoMath.largestPowerOfTwoLessOrEqual(teamCount) : teamCount;
+  const bracketRounds = Math.log2(bracketSize);
+  return (qualifyingNeeded ? 1 : 0) + bracketRounds;
 }
 
 export type StartTournamentOutput =
@@ -44,6 +57,9 @@ export class StartTournamentUseCase {
     if (!tournament) {
       throw new Error(`Torneo ${input.tournamentId} no encontrado`);
     }
+    if (tournament.getStatus() !== TournamentStatus.DRAFT) {
+      throw new Error('El torneo ya fue iniciado');
+    }
 
     const teamIds = input.teamIds.map((id) => EntityId.fromString(id));
     const teams = await this.teamRepository.findByIds(teamIds);
@@ -51,22 +67,37 @@ export class StartTournamentUseCase {
       throw new Error('Alguno de los equipos indicados no existe');
     }
 
-    const businessCase = new BusinessCase(
-      EntityId.generate(),
-      input.caseTitle,
-      input.caseDescription,
-      RequiredStructureType.SINGLE_STRUCTURE,
-    );
-    await this.businessCaseRepository.save(businessCase);
+    const requiredCases = expectedCaseCount(teams.length);
+    if (input.cases.length !== requiredCases) {
+      throw new Error(
+        `Se esperaban ${requiredCases} casos (uno por ronda, incluyendo la clasificatoria si aplica), se recibieron ${input.cases.length}`,
+      );
+    }
+
+    const businessCases: BusinessCase[] = [];
+    for (const caseInput of input.cases) {
+      const businessCase = new BusinessCase(
+        EntityId.generate(),
+        caseInput.title,
+        caseInput.description,
+        RequiredStructureType.SINGLE_STRUCTURE,
+      );
+      await this.businessCaseRepository.save(businessCase);
+      businessCases.push(businessCase);
+    }
+    const pendingCaseIds = businessCases.slice(1).map((c) => c.getId());
 
     if (!PowerOfTwoMath.isPowerOfTwo(teams.length)) {
       const qualifyingRound = new QualifyingRound(
         EntityId.generate(),
         teams,
-        businessCase,
+        businessCases[0],
         input.timerDurationSeconds,
       );
       await this.qualifyingRoundRepository.save(qualifyingRound, tournament.getId());
+      tournament.enterQualifying();
+      tournament.setPendingCaseIds(pendingCaseIds);
+      await this.tournamentRepository.save(tournament);
 
       return {
         kind: 'QUALIFYING_ROUND_STARTED',
@@ -79,11 +110,12 @@ export class StartTournamentUseCase {
       teams,
       EntityId.generate(),
       'Cuartos de Final',
-      businessCase,
+      businessCases[0],
       input.timerDurationSeconds,
     );
     tournament.addRound(round);
     tournament.start();
+    tournament.setPendingCaseIds(pendingCaseIds);
     await this.tournamentRepository.save(tournament);
 
     return {
