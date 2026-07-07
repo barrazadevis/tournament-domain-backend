@@ -7,10 +7,13 @@ import { Tournament } from '../src/domain/entities/tournament';
 import { Round } from '../src/domain/entities/round';
 import { Match } from '../src/domain/entities/match';
 import { QualifyingRound } from '../src/domain/entities/qualifying-round';
+import { User } from '../src/domain/entities/user';
 import { TournamentDatabase } from '../src/infrastructure/persistence/sqlite/database';
 import { SqliteTeamRepository } from '../src/infrastructure/persistence/sqlite/team.repository';
 import { SqliteTournamentRepository } from '../src/infrastructure/persistence/sqlite/tournament.repository';
 import { SqliteQualifyingRoundRepository } from '../src/infrastructure/persistence/sqlite/qualifying-round.repository';
+import { SqliteUserRepository } from '../src/infrastructure/persistence/sqlite/user.repository';
+import { SqliteSessionRepository } from '../src/infrastructure/persistence/sqlite/session.repository';
 
 const TEST_DB_PATH = `${__dirname}/test-tournament.db`;
 
@@ -182,5 +185,78 @@ describe('Persistencia SQLite (integración)', () => {
   it('devuelve null si el torneo no existe', async () => {
     const loaded = await tournamentRepository.findById(EntityId.generate());
     expect(loaded).toBeNull();
+  });
+
+  describe('Users y Sessions', () => {
+    let userRepository: SqliteUserRepository;
+    let sessionRepository: SqliteSessionRepository;
+
+    beforeEach(() => {
+      userRepository = new SqliteUserRepository(db);
+      sessionRepository = new SqliteSessionRepository(db);
+    });
+
+    it('guarda y recupera un User por id y por email', async () => {
+      const user = new User(EntityId.generate(), 'Profe@Colegio.edu', 'hashed:clave');
+      await userRepository.save(user);
+
+      const byId = await userRepository.findById(user.getId());
+      expect(byId!.getEmail()).toBe('profe@colegio.edu');
+
+      const byEmail = await userRepository.findByEmail('PROFE@colegio.edu');
+      expect(byEmail!.getId().equals(user.getId())).toBe(true);
+    });
+
+    it('count() y delete() reflejan el estado real de la tabla', async () => {
+      const userA = new User(EntityId.generate(), 'a@colegio.edu', 'hashed:a');
+      const userB = new User(EntityId.generate(), 'b@colegio.edu', 'hashed:b');
+      await userRepository.save(userA);
+      await userRepository.save(userB);
+
+      expect(await userRepository.count()).toBe(2);
+      await userRepository.delete(userA.getId());
+      expect(await userRepository.count()).toBe(1);
+      expect(await userRepository.findById(userA.getId())).toBeNull();
+    });
+
+    it('guarda una sesión y la recupera solo si no expiró', async () => {
+      const user = new User(EntityId.generate(), 'profe@colegio.edu', 'hashed:clave');
+      await userRepository.save(user);
+
+      const now = new Date();
+      await sessionRepository.save({
+        token: 'token-valido',
+        userId: user.getId(),
+        createdAt: now,
+        expiresAt: new Date(now.getTime() + 60_000),
+      });
+      await sessionRepository.save({
+        token: 'token-expirado',
+        userId: user.getId(),
+        createdAt: now,
+        expiresAt: new Date(now.getTime() - 60_000),
+      });
+
+      const valid = await sessionRepository.findByToken('token-valido');
+      expect(valid).not.toBeNull();
+      expect(valid!.userId.equals(user.getId())).toBe(true);
+
+      const expired = await sessionRepository.findByToken('token-expirado');
+      expect(expired).toBeNull();
+    });
+
+    it('deleteAllForUser borra todas las sesiones de ese usuario', async () => {
+      const user = new User(EntityId.generate(), 'profe@colegio.edu', 'hashed:clave');
+      await userRepository.save(user);
+      const now = new Date();
+      const farFuture = new Date(now.getTime() + 60_000);
+      await sessionRepository.save({ token: 't1', userId: user.getId(), createdAt: now, expiresAt: farFuture });
+      await sessionRepository.save({ token: 't2', userId: user.getId(), createdAt: now, expiresAt: farFuture });
+
+      await sessionRepository.deleteAllForUser(user.getId());
+
+      expect(await sessionRepository.findByToken('t1')).toBeNull();
+      expect(await sessionRepository.findByToken('t2')).toBeNull();
+    });
   });
 });

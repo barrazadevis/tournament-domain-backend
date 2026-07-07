@@ -1,4 +1,4 @@
-import { IsArray, IsBoolean, IsInt, IsOptional, IsString, Min, ArrayMinSize } from 'class-validator';
+import { IsArray, IsBoolean, IsEmail, IsInt, IsOptional, IsString, Min, MinLength, ArrayMinSize } from 'class-validator';
 import { ApiProperty, ApiPropertyOptional } from '@nestjs/swagger';
 
 export class RegisterTeamDto {
@@ -89,4 +89,49 @@ export class AdvanceRoundDto {
   @IsInt()
   @Min(1)
   timerDurationSeconds!: number;
+}
+
+export class BootstrapUserDto {
+  @ApiProperty({ example: 'profesor@colegio.edu' })
+  @IsEmail()
+  email!: string;
+
+  @ApiProperty({ example: 'unaClaveSegura123' })
+  @IsString()
+  @MinLength(8)
+  password!: string;
+}
+
+export class LoginDto {
+  @ApiProperty({ example: 'profesor@colegio.edu' })
+  @IsEmail()
+  email!: string;
+
+  @ApiProperty()
+  @IsString()
+  password!: string;
+}
+
+export class CreateUserDto {
+  @ApiProperty({ example: 'colega@colegio.edu' })
+  @IsEmail()
+  email!: string;
+
+  @ApiProperty({ example: 'unaClaveSegura123' })
+  @IsString()
+  @MinLength(8)
+  password!: string;
+}
+
+export class UpdateUserDto {
+  @ApiPropertyOptional({ example: 'nuevoemail@colegio.edu' })
+  @IsOptional()
+  @IsEmail()
+  email?: string;
+
+  @ApiPropertyOptional({ example: 'unaClaveNueva123' })
+  @IsOptional()
+  @IsString()
+  @MinLength(8)
+  password?: string;
 }

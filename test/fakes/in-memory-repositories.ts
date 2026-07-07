@@ -3,10 +3,14 @@ import { Team } from '../../src/domain/entities/team';
 import { Tournament } from '../../src/domain/entities/tournament';
 import { BusinessCase } from '../../src/domain/entities/business-case';
 import { QualifyingRound } from '../../src/domain/entities/qualifying-round';
+import { User } from '../../src/domain/entities/user';
 import { TeamRepository } from '../../src/application/ports/team.repository';
 import { TournamentRepository } from '../../src/application/ports/tournament.repository';
 import { BusinessCaseRepository } from '../../src/application/ports/business-case.repository';
 import { QualifyingRoundRepository } from '../../src/application/ports/qualifying-round.repository';
+import { UserRepository } from '../../src/application/ports/user.repository';
+import { SessionRepository, Session } from '../../src/application/ports/session.repository';
+import { PasswordHasher } from '../../src/application/ports/password-hasher';
 
 /**
  * Fakes en memoria: como las entidades de dominio ya son el objeto real
@@ -97,5 +101,76 @@ export class InMemoryQualifyingRoundRepository implements QualifyingRoundReposit
 
   async findByTournamentId(tournamentId: EntityId): Promise<QualifyingRound | null> {
     return this.store.get(tournamentId.toString()) ?? null;
+  }
+}
+
+export class InMemoryUserRepository implements UserRepository {
+  private readonly store = new Map<string, User>();
+
+  async save(user: User): Promise<void> {
+    this.store.set(user.getId().toString(), user);
+  }
+
+  async findById(id: EntityId): Promise<User | null> {
+    return this.store.get(id.toString()) ?? null;
+  }
+
+  async findByEmail(email: string): Promise<User | null> {
+    const normalized = email.trim().toLowerCase();
+    for (const user of this.store.values()) {
+      if (user.getEmail() === normalized) return user;
+    }
+    return null;
+  }
+
+  async findAll(): Promise<User[]> {
+    return [...this.store.values()];
+  }
+
+  async delete(id: EntityId): Promise<void> {
+    this.store.delete(id.toString());
+  }
+
+  async count(): Promise<number> {
+    return this.store.size;
+  }
+}
+
+export class InMemorySessionRepository implements SessionRepository {
+  private readonly store = new Map<string, Session>();
+
+  async save(session: Session): Promise<void> {
+    this.store.set(session.token, session);
+  }
+
+  async findByToken(token: string): Promise<Session | null> {
+    const session = this.store.get(token);
+    if (!session) return null;
+    if (session.expiresAt.getTime() <= Date.now()) {
+      this.store.delete(token);
+      return null;
+    }
+    return session;
+  }
+
+  async deleteByToken(token: string): Promise<void> {
+    this.store.delete(token);
+  }
+
+  async deleteAllForUser(userId: EntityId): Promise<void> {
+    for (const [token, session] of this.store) {
+      if (session.userId.equals(userId)) this.store.delete(token);
+    }
+  }
+}
+
+/** Fake rápido para tests: evita el costo de scrypt real en cada caso de uso. */
+export class FakePasswordHasher implements PasswordHasher {
+  async hash(plain: string): Promise<string> {
+    return `hashed:${plain}`;
+  }
+
+  async verify(plain: string, hash: string): Promise<boolean> {
+    return hash === `hashed:${plain}`;
   }
 }

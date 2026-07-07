@@ -5,11 +5,23 @@ import { SqliteTeamRepository } from '../persistence/sqlite/team.repository';
 import { SqliteTournamentRepository } from '../persistence/sqlite/tournament.repository';
 import { SqliteBusinessCaseRepository } from '../persistence/sqlite/business-case.repository';
 import { SqliteQualifyingRoundRepository } from '../persistence/sqlite/qualifying-round.repository';
+import { SqliteUserRepository } from '../persistence/sqlite/user.repository';
+import { SqliteSessionRepository } from '../persistence/sqlite/session.repository';
+import { ScryptPasswordHasher } from '../security/scrypt-password-hasher';
 import { TeamRepository } from '../../application/ports/team.repository';
 import { TournamentRepository } from '../../application/ports/tournament.repository';
 import { BusinessCaseRepository } from '../../application/ports/business-case.repository';
 import { QualifyingRoundRepository } from '../../application/ports/qualifying-round.repository';
+import { UserRepository } from '../../application/ports/user.repository';
+import { SessionRepository } from '../../application/ports/session.repository';
+import { PasswordHasher } from '../../application/ports/password-hasher';
 import { RegisterTeamUseCase } from '../../application/use-cases/register-team.use-case';
+import { RegisterUserUseCase } from '../../application/use-cases/register-user.use-case';
+import { BootstrapUserUseCase } from '../../application/use-cases/bootstrap-user.use-case';
+import { LoginUseCase } from '../../application/use-cases/login.use-case';
+import { LogoutUseCase } from '../../application/use-cases/logout.use-case';
+import { UpdateUserUseCase } from '../../application/use-cases/update-user.use-case';
+import { DeleteUserUseCase } from '../../application/use-cases/delete-user.use-case';
 import { CreateTournamentUseCase } from '../../application/use-cases/create-tournament.use-case';
 import { StartTournamentUseCase } from '../../application/use-cases/start-tournament.use-case';
 import { SubmitQualifyingSolutionUseCase } from '../../application/use-cases/submit-qualifying-solution.use-case';
@@ -27,6 +39,9 @@ import { ResetTournamentUseCase } from '../../application/use-cases/reset-tourna
 import { TeamsController } from './controllers/teams.controller';
 import { TournamentsController } from './controllers/tournaments.controller';
 import { MatchesController } from './controllers/matches.controller';
+import { AuthController } from './controllers/auth.controller';
+import { UsersController } from './controllers/users.controller';
+import { SessionAuthGuard } from './guards/session-auth.guard';
 import { TournamentEventBus } from '../websockets/tournament-event-bus';
 import { MatchTimerService } from '../websockets/match-timer.service';
 import { TeamGateway } from '../websockets/team.gateway';
@@ -38,6 +53,9 @@ import {
   BUSINESS_CASE_REPOSITORY,
   QUALIFYING_ROUND_REPOSITORY,
   TOURNAMENT_DATABASE,
+  USER_REPOSITORY,
+  SESSION_REPOSITORY,
+  PASSWORD_HASHER,
 } from './tokens';
 
 /**
@@ -49,7 +67,7 @@ import {
  * Root, no esparcido por el código de negocio.
  */
 @Module({
-  controllers: [TeamsController, TournamentsController, MatchesController],
+  controllers: [TeamsController, TournamentsController, MatchesController, AuthController, UsersController],
   providers: [
     {
       provide: TOURNAMENT_DATABASE,
@@ -182,6 +200,51 @@ import {
     TeamGateway,
     JudgeGateway,
     ViewerGateway,
+    {
+      provide: USER_REPOSITORY,
+      useFactory: (db: TournamentDatabase) => new SqliteUserRepository(db),
+      inject: [TOURNAMENT_DATABASE],
+    },
+    {
+      provide: SESSION_REPOSITORY,
+      useFactory: (db: TournamentDatabase) => new SqliteSessionRepository(db),
+      inject: [TOURNAMENT_DATABASE],
+    },
+    { provide: PASSWORD_HASHER, useClass: ScryptPasswordHasher },
+    {
+      provide: RegisterUserUseCase,
+      useFactory: (userRepo: UserRepository, hasher: PasswordHasher) => new RegisterUserUseCase(userRepo, hasher),
+      inject: [USER_REPOSITORY, PASSWORD_HASHER],
+    },
+    {
+      provide: BootstrapUserUseCase,
+      useFactory: (userRepo: UserRepository, sessionRepo: SessionRepository, registerUser: RegisterUserUseCase) =>
+        new BootstrapUserUseCase(userRepo, sessionRepo, registerUser),
+      inject: [USER_REPOSITORY, SESSION_REPOSITORY, RegisterUserUseCase],
+    },
+    {
+      provide: LoginUseCase,
+      useFactory: (userRepo: UserRepository, sessionRepo: SessionRepository, hasher: PasswordHasher) =>
+        new LoginUseCase(userRepo, sessionRepo, hasher),
+      inject: [USER_REPOSITORY, SESSION_REPOSITORY, PASSWORD_HASHER],
+    },
+    {
+      provide: LogoutUseCase,
+      useFactory: (sessionRepo: SessionRepository) => new LogoutUseCase(sessionRepo),
+      inject: [SESSION_REPOSITORY],
+    },
+    {
+      provide: UpdateUserUseCase,
+      useFactory: (userRepo: UserRepository, hasher: PasswordHasher) => new UpdateUserUseCase(userRepo, hasher),
+      inject: [USER_REPOSITORY, PASSWORD_HASHER],
+    },
+    {
+      provide: DeleteUserUseCase,
+      useFactory: (userRepo: UserRepository, sessionRepo: SessionRepository) =>
+        new DeleteUserUseCase(userRepo, sessionRepo),
+      inject: [USER_REPOSITORY, SESSION_REPOSITORY],
+    },
+    SessionAuthGuard,
   ],
 })
 export class AppModule {}

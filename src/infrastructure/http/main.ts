@@ -24,6 +24,7 @@ async function bootstrap() {
         'El frontend vive en un repo separado (tournament-frontend).',
     )
     .setVersion('1.0')
+    .addBearerAuth()
     .build();
   const swaggerDocument = SwaggerModule.createDocument(app, swaggerConfig);
   SwaggerModule.setup('docs', app, swaggerDocument);

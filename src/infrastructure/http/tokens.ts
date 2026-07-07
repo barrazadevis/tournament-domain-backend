@@ -9,3 +9,6 @@ export const TOURNAMENT_REPOSITORY = Symbol('TournamentRepository');
 export const BUSINESS_CASE_REPOSITORY = Symbol('BusinessCaseRepository');
 export const QUALIFYING_ROUND_REPOSITORY = Symbol('QualifyingRoundRepository');
 export const TOURNAMENT_DATABASE = Symbol('TournamentDatabase');
+export const USER_REPOSITORY = Symbol('UserRepository');
+export const SESSION_REPOSITORY = Symbol('SessionRepository');
+export const PASSWORD_HASHER = Symbol('PasswordHasher');
