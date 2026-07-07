@@ -64,14 +64,15 @@ export class TournamentDatabase {
    * TABLE de arriba lanzó o no).
    */
   private backfillMissingTeamCodes(): void {
-    const rows = this.connection.prepare('SELECT id FROM teams WHERE code IS NULL').all() as unknown as Array<{
+    const rows = this.connection.prepare('SELECT id, name FROM teams WHERE code IS NULL').all() as unknown as Array<{
       id: string;
+      name: string;
     }>;
 
     for (const row of rows) {
       let code: string;
       do {
-        code = TeamCode.generate().toString();
+        code = TeamCode.generate(row.name).toString();
       } while (this.connection.prepare('SELECT 1 FROM teams WHERE code = ?').get(code));
       this.connection.prepare('UPDATE teams SET code = ? WHERE id = ?').run(code, row.id);
     }

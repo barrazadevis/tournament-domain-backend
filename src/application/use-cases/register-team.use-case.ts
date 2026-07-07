@@ -29,16 +29,16 @@ export class RegisterTeamUseCase {
 
   async execute(input: RegisterTeamInput): Promise<Team> {
     const members: TeamMember[] = input.memberNames.map((fullName) => ({ fullName }));
-    const code = await this.generateUniqueCode();
+    const code = await this.generateUniqueCode(input.name);
     const team = new Team(EntityId.generate(), input.name, members, code, input.logo ?? null);
 
     await this.teamRepository.save(team);
     return team;
   }
 
-  private async generateUniqueCode(): Promise<TeamCode> {
+  private async generateUniqueCode(name: string): Promise<TeamCode> {
     for (let attempt = 0; attempt < MAX_CODE_GENERATION_ATTEMPTS; attempt++) {
-      const code = TeamCode.generate();
+      const code = TeamCode.generate(name);
       const existing = await this.teamRepository.findByCode(code.toString());
       if (!existing) return code;
     }

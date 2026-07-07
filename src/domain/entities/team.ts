@@ -23,7 +23,7 @@ export class Team {
     id: EntityId,
     name: string,
     members: TeamMember[],
-    code: TeamCode = TeamCode.generate(),
+    code: TeamCode = TeamCode.generate(name),
     logo: string | null = null,
   ) {
     if (!name || name.trim().length === 0) {

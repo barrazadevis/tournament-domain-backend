@@ -231,7 +231,8 @@ describe('Tournament API (E2E)', () => {
         .send({ name: 'Los Tiburones', memberNames: ['Ana'] });
       expect(registerRes.status).toBe(201);
       expect(typeof registerRes.body.code).toBe('string');
-      expect(registerRes.body.code).toHaveLength(6);
+      expect(registerRes.body.code).toHaveLength(8); // 4 letras del nombre + 4 dígitos
+      expect(registerRes.body.code.slice(0, 4)).toBe('LOST'); // "Los Tiburones" -> LOST
 
       const listRes = await request(app.getHttpServer()).get('/teams');
       const found = listRes.body.find((t: { id: string }) => t.id === registerRes.body.id);

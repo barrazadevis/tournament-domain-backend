@@ -31,7 +31,7 @@ export class RegisterTeamDto {
 }
 
 export class RejoinTeamDto {
-  @ApiProperty({ example: 'XK7M2P', description: 'Código único que se mostró al registrar el equipo' })
+  @ApiProperty({ example: 'EQUI4827', description: 'Código único que se mostró al registrar el equipo' })
   @IsString()
   @MinLength(4)
   code!: string;
