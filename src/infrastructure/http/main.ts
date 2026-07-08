@@ -29,11 +29,12 @@ async function bootstrap() {
   const swaggerDocument = SwaggerModule.createDocument(app, swaggerConfig);
   SwaggerModule.setup('docs', app, swaggerDocument);
 
-  await app.listen(3000);
+  const port = process.env.PORT ?? 3000;
+  await app.listen(port);
   // eslint-disable-next-line no-console
-  console.log('Tournament API en http://localhost:3000');
+  console.log(`Tournament API en http://localhost:${port}`);
   // eslint-disable-next-line no-console
-  console.log('  Swagger: http://localhost:3000/docs');
+  console.log(`  Swagger: http://localhost:${port}/docs`);
   // eslint-disable-next-line no-console
   console.log('  Frontend: corre "npm run dev" en el repo tournament-frontend (puerto 5173)');
 }

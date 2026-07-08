@@ -1,9 +1,14 @@
 {
   "name": "tournament-domain",
   "version": "1.0.0",
+  "engines": {
+    "node": ">=22.5.0"
+  },
   "scripts": {
     "test": "jest",
-    "dev": "npx ts-node -T src/infrastructure/http/main.ts"
+    "dev": "npx ts-node -T src/infrastructure/http/main.ts",
+    "build": "tsc -p tsconfig.build.json && node -e \"require('fs').copyFileSync('src/infrastructure/persistence/sqlite/schema.sql','dist/infrastructure/persistence/sqlite/schema.sql')\"",
+    "start": "node dist/infrastructure/http/main.js"
   },
   "devDependencies": {
     "@nestjs/testing": "^11.1.27",
