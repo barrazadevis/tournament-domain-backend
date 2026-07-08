@@ -1,5 +1,6 @@
 import { EntityId } from '../../domain/value-objects/entity-id';
 import { BracketGenerationService } from '../../domain/services/bracket-generation.service';
+import { RoundNamingService } from '../../domain/services/round-naming.service';
 import { TournamentRepository } from '../ports/tournament.repository';
 import { TeamRepository } from '../ports/team.repository';
 import { QualifyingRoundRepository } from '../ports/qualifying-round.repository';
@@ -46,13 +47,13 @@ export class FinalizeQualifyingRoundUseCase {
     const nextCaseId = tournament.consumeNextCaseId();
     const businessCase = await this.businessCaseRepository.findById(nextCaseId);
     if (!businessCase) {
-      throw new Error('El caso planificado para Cuartos de Final no se encontró');
+      throw new Error('El caso planificado para la primera ronda del bracket no se encontró');
     }
 
     const round = BracketGenerationService.generateInitialRound(
       qualifiedTeams,
       EntityId.generate(),
-      'Cuartos de Final',
+      RoundNamingService.nameForMatchCount(qualifiedTeams.length / 2),
       businessCase,
       qualifyingRound.getTimerDurationSeconds(),
     );

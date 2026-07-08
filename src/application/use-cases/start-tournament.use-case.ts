@@ -4,6 +4,7 @@ import { QualifyingRound } from '../../domain/entities/qualifying-round';
 import { TournamentStatus } from '../../domain/entities/tournament';
 import { PowerOfTwoMath } from '../../domain/services/power-of-two-math';
 import { BracketGenerationService } from '../../domain/services/bracket-generation.service';
+import { RoundNamingService } from '../../domain/services/round-naming.service';
 import { TournamentRepository } from '../ports/tournament.repository';
 import { TeamRepository } from '../ports/team.repository';
 import { BusinessCaseRepository } from '../ports/business-case.repository';
@@ -109,7 +110,7 @@ export class StartTournamentUseCase {
     const round = BracketGenerationService.generateInitialRound(
       teams,
       EntityId.generate(),
-      'Cuartos de Final',
+      RoundNamingService.nameForMatchCount(teams.length / 2),
       businessCases[0],
       input.timerDurationSeconds,
     );
