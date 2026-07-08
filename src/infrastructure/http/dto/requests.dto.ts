@@ -2,6 +2,7 @@ import {
   IsArray,
   IsBoolean,
   IsEmail,
+  IsIn,
   IsInt,
   IsOptional,
   IsString,
@@ -12,6 +13,7 @@ import {
 } from 'class-validator';
 import { Type } from 'class-transformer';
 import { ApiProperty, ApiPropertyOptional } from '@nestjs/swagger';
+import { TournamentLanguage } from '../../../domain/entities/tournament';
 
 export class RegisterTeamDto {
   @ApiProperty({ example: 'Los Refactorizadores' })
@@ -49,6 +51,16 @@ export class RenameTournamentDto {
   name!: string;
 }
 
+export class CaseTestCaseDto {
+  @ApiProperty({ example: '5\n3' })
+  @IsString()
+  input!: string;
+
+  @ApiProperty({ example: '8' })
+  @IsString()
+  expectedOutput!: string;
+}
+
 export class StartTournamentCaseDto {
   @ApiProperty({ example: 'Cálculo de bono de vendedores' })
   @IsString()
@@ -57,6 +69,16 @@ export class StartTournamentCaseDto {
   @ApiProperty({ example: 'Diseñar el ciclo para calcular el bono de 20 vendedores según sus ventas' })
   @IsString()
   description!: string;
+
+  @ApiPropertyOptional({
+    description: 'Solo para torneos PYTHON — al menos 2, con inputs distintos.',
+    type: [CaseTestCaseDto],
+  })
+  @IsOptional()
+  @IsArray()
+  @ValidateNested({ each: true })
+  @Type(() => CaseTestCaseDto)
+  testCases?: CaseTestCaseDto[];
 }
 
 export class StartTournamentDto {
@@ -83,6 +105,15 @@ export class StartTournamentDto {
   @IsInt()
   @Min(1)
   timerDurationSeconds!: number;
+
+  @ApiPropertyOptional({
+    example: 'PSEINT',
+    description: 'Lenguaje de todo el torneo (no se mezcla por caso). Default PSEINT si se omite.',
+    enum: TournamentLanguage,
+  })
+  @IsOptional()
+  @IsIn(Object.values(TournamentLanguage))
+  language?: TournamentLanguage;
 }
 
 export class SubmitSolutionDto {
@@ -93,6 +124,12 @@ export class SubmitSolutionDto {
   @ApiProperty({ example: 'Estructura: Para. Pseudocódigo: ... Justificación: ...' })
   @IsString()
   content!: string;
+}
+
+export class RunCodeDto {
+  @ApiProperty({ example: 'n = int(input())\nprint(n * 2)' })
+  @IsString()
+  code!: string;
 }
 
 export class JudgeVerdictDto {

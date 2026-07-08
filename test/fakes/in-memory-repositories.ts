@@ -11,6 +11,7 @@ import { QualifyingRoundRepository } from '../../src/application/ports/qualifyin
 import { UserRepository } from '../../src/application/ports/user.repository';
 import { SessionRepository, Session } from '../../src/application/ports/session.repository';
 import { PasswordHasher } from '../../src/application/ports/password-hasher';
+import { ExecutionResult } from '../../src/domain/entities/submission';
 
 /**
  * Fakes en memoria: como las entidades de dominio ya son el objeto real
@@ -103,6 +104,20 @@ export class InMemoryTournamentRepository implements TournamentRepository {
   async reset(id: EntityId): Promise<void> {
     const tournament = this.store.get(id.toString());
     tournament?.resetToDraft();
+  }
+
+  async updateSubmissionExecutionResult(submissionId: EntityId, result: ExecutionResult): Promise<void> {
+    for (const tournament of this.store.values()) {
+      for (const round of tournament.getRounds()) {
+        for (const match of round.getMatches()) {
+          const submission = match.getSubmissions().find((s) => s.getId().equals(submissionId));
+          if (submission) {
+            submission.setExecutionResult(result);
+            return;
+          }
+        }
+      }
+    }
   }
 }
 

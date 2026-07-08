@@ -10,6 +10,17 @@ export enum TournamentStatus {
 }
 
 /**
+ * Lenguaje del torneo completo (no por caso — un torneo = un curso = un
+ * lenguaje, decisión explícita: no se mezclan dentro del mismo torneo).
+ * PSEINT se juzga 100% manual como siempre; PYTHON habilita ejecución
+ * automática contra casos de prueba vía Piston.
+ */
+export enum TournamentLanguage {
+  PSEINT = 'PSEINT',
+  PYTHON = 'PYTHON',
+}
+
+/**
  * Tournament: Aggregate Root. Es el único punto de entrada para modificar
  * el conjunto de rondas — nadie fuera del agregado debería mutar un Round
  * o un Match directamente sin pasar por aquí, para mantener consistencia
@@ -21,6 +32,7 @@ export class Tournament {
   private status: TournamentStatus = TournamentStatus.DRAFT;
   private readonly rounds: Round[] = [];
   private pendingCaseIds: EntityId[] = [];
+  private language: TournamentLanguage = TournamentLanguage.PSEINT;
 
   constructor(id: EntityId, name: string) {
     if (!name.trim()) {
@@ -141,18 +153,29 @@ export class Tournament {
     return next;
   }
 
+  getLanguage(): TournamentLanguage {
+    return this.language;
+  }
+
+  /** Se fija una sola vez, al iniciar el torneo (ver StartTournamentUseCase). */
+  setLanguage(language: TournamentLanguage): void {
+    this.language = language;
+  }
+
   static rehydrate(props: {
     id: EntityId;
     name: string;
     status: TournamentStatus;
     rounds: Round[];
     pendingCaseIds?: EntityId[];
+    language?: TournamentLanguage;
   }): Tournament {
     const tournament = new Tournament(props.id, props.name);
     tournament.status = props.status;
     props.rounds.forEach((round) => tournament.rounds.push(round));
     tournament.rounds.sort((a, b) => a.getOrder() - b.getOrder());
     tournament.pendingCaseIds = props.pendingCaseIds ? [...props.pendingCaseIds] : [];
+    tournament.language = props.language ?? TournamentLanguage.PSEINT;
     return tournament;
   }
 }

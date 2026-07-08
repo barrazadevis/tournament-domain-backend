@@ -218,6 +218,51 @@ describe('Persistencia SQLite (integración)', () => {
     expect(qualifiers.some((id) => id.equals(teams[8].getId()))).toBe(false);
   });
 
+  it('updateSubmissionExecutionResult anota UNA submission sin tocar la del equipo rival (condición de carrera evitada)', async () => {
+    const teamA = new Team(EntityId.generate(), 'Equipo A', [{ fullName: 'Ana' }]);
+    const teamB = new Team(EntityId.generate(), 'Equipo B', [{ fullName: 'Beto' }]);
+    await teamRepository.save(teamA);
+    await teamRepository.save(teamB);
+
+    const tournament = new Tournament(EntityId.generate(), 'Torneo Python race');
+    const round = new Round(EntityId.generate(), 'Final', 0);
+    const match = new Match(EntityId.generate(), 'Final', teamA.getId(), teamB.getId(), buildCase(), 60);
+    round.addMatch(match);
+    tournament.addRound(round);
+    await tournamentRepository.save(tournament);
+
+    // Simula el escenario real: ambos equipos ya enviaron su submission
+    // (guardado vía save() del agregado, como hace SubmitMatchSolutionUseCase).
+    match.start(new Date());
+    const submissionA = new Submission(EntityId.generate(), teamA.getId(), 'print(1)', new Date());
+    const submissionB = new Submission(EntityId.generate(), teamB.getId(), 'print(2)', new Date());
+    match.submitSolution(submissionA);
+    match.submitSolution(submissionB);
+    await tournamentRepository.save(tournament);
+
+    // El UPDATE angosto (lo que usa RunSubmissionCodeUseCase) solo debe
+    // tocar la fila de submissionA — nunca pasar por save() del agregado.
+    await tournamentRepository.updateSubmissionExecutionResult(submissionA.getId(), {
+      status: 'RAN',
+      testResults: [{ input: '1', expectedOutput: '1', actualOutput: '1', passed: true }],
+      stderr: null,
+    });
+
+    const reloaded = await tournamentRepository.findByMatchId(match.getId());
+    const reloadedMatch = reloaded!.findMatch(match.getId())!;
+    const reloadedA = reloadedMatch.getSubmissions().find((s) => s.getId().equals(submissionA.getId()))!;
+    const reloadedB = reloadedMatch.getSubmissions().find((s) => s.getId().equals(submissionB.getId()))!;
+
+    expect(reloadedA.getExecutionResult()).not.toBeNull();
+    expect(reloadedA.getExecutionResult()!.testResults[0].passed).toBe(true);
+    // La submission del rival sigue existiendo, intacta y sin resultado —
+    // el bug que este método evita habría hecho desaparecer esta fila si
+    // se hubiera guardado un Tournament desactualizado vía save().
+    expect(reloadedB).toBeDefined();
+    expect(reloadedB.getContent()).toBe('print(2)');
+    expect(reloadedB.getExecutionResult()).toBeNull();
+  });
+
   it('devuelve null si el torneo no existe', async () => {
     const loaded = await tournamentRepository.findById(EntityId.generate());
     expect(loaded).toBeNull();

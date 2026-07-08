@@ -1,10 +1,10 @@
 import { TournamentRepository } from '../../../application/ports/tournament.repository';
 import { EntityId } from '../../../domain/value-objects/entity-id';
-import { Tournament, TournamentStatus } from '../../../domain/entities/tournament';
+import { Tournament, TournamentLanguage, TournamentStatus } from '../../../domain/entities/tournament';
 import { Round } from '../../../domain/entities/round';
 import { Match } from '../../../domain/entities/match';
 import { BusinessCase } from '../../../domain/entities/business-case';
-import { Submission } from '../../../domain/entities/submission';
+import { ExecutionResult, Submission } from '../../../domain/entities/submission';
 import { TournamentDatabase } from './database';
 import { MatchMapper, MatchRow } from './mappers/match.mapper';
 import { SubmissionMapper, SubmissionRow } from './mappers/submission.mapper';
@@ -15,6 +15,7 @@ interface TournamentRow {
   name: string;
   status: string;
   pending_case_ids: string;
+  language: string;
 }
 
 interface RoundRow {
@@ -75,6 +76,7 @@ export class SqliteTournamentRepository implements TournamentRepository {
       status: tournamentRow.status as TournamentStatus,
       rounds,
       pendingCaseIds: pendingCaseIds.map((id) => EntityId.fromString(id)),
+      language: tournamentRow.language as TournamentLanguage,
     });
   }
 
@@ -158,14 +160,21 @@ export class SqliteTournamentRepository implements TournamentRepository {
     const pendingCaseIdsJson = JSON.stringify(tournament.getPendingCaseIds().map((id) => id.toString()));
     this.db.connection
       .prepare(
-        `INSERT INTO tournaments (id, name, status, pending_case_ids)
-         VALUES (?, ?, ?, ?)
+        `INSERT INTO tournaments (id, name, status, pending_case_ids, language)
+         VALUES (?, ?, ?, ?, ?)
          ON CONFLICT(id) DO UPDATE SET
            name = excluded.name,
            status = excluded.status,
-           pending_case_ids = excluded.pending_case_ids`,
+           pending_case_ids = excluded.pending_case_ids,
+           language = excluded.language`,
       )
-      .run(tournament.getId().toString(), tournament.getName(), tournament.getStatus(), pendingCaseIdsJson);
+      .run(
+        tournament.getId().toString(),
+        tournament.getName(),
+        tournament.getStatus(),
+        pendingCaseIdsJson,
+        tournament.getLanguage(),
+      );
   }
 
   private upsertRoundRow(round: Round, tournamentId: EntityId): void {
@@ -182,11 +191,11 @@ export class SqliteTournamentRepository implements TournamentRepository {
     const row = BusinessCaseMapper.toRow(businessCase);
     this.db.connection
       .prepare(
-        `INSERT INTO business_cases (id, title, description, structure_type)
-         VALUES (?, ?, ?, ?)
+        `INSERT INTO business_cases (id, title, description, structure_type, test_cases_json)
+         VALUES (?, ?, ?, ?, ?)
          ON CONFLICT(id) DO NOTHING`,
       )
-      .run(row.id, row.title, row.description, row.structure_type);
+      .run(row.id, row.title, row.description, row.structure_type, row.test_cases_json);
   }
 
   private upsertMatchRow(match: Match, roundId: EntityId): void {
@@ -227,11 +236,36 @@ export class SqliteTournamentRepository implements TournamentRepository {
       const row = SubmissionMapper.toRow(submission, match.getId());
       this.db.connection
         .prepare(
-          `INSERT INTO submissions (id, match_id, team_id, content, submitted_at, verdict, judged_at)
-           VALUES (?, ?, ?, ?, ?, ?, ?)`,
+          `INSERT INTO submissions
+             (id, match_id, team_id, content, submitted_at, verdict, judged_at, execution_result_json)
+           VALUES (?, ?, ?, ?, ?, ?, ?, ?)`,
         )
-        .run(row.id, row.match_id, row.team_id, row.content, row.submitted_at, row.verdict, row.judged_at);
+        .run(
+          row.id,
+          row.match_id,
+          row.team_id,
+          row.content,
+          row.submitted_at,
+          row.verdict,
+          row.judged_at,
+          row.execution_result_json,
+        );
     }
+  }
+
+  /**
+   * Actualización angosta y aislada, deliberadamente SIN pasar por save().
+   * save() hace read-modify-write del agregado completo — replaceSubmissions
+   * borra y reinserta TODAS las submissions de un match desde el objeto en
+   * memoria. Si esto se guardara así, un Tournament cargado antes de que
+   * Piston respondiera (segundos de por medio) pisaría silenciosamente la
+   * submission del equipo rival si este envió la suya mientras tanto. Un
+   * UPDATE de una sola fila no tiene ese problema.
+   */
+  async updateSubmissionExecutionResult(submissionId: EntityId, result: ExecutionResult): Promise<void> {
+    this.db.connection
+      .prepare('UPDATE submissions SET execution_result_json = ? WHERE id = ?')
+      .run(JSON.stringify(result), submissionId.toString());
   }
 
   private replaceDisqualifications(match: Match): void {

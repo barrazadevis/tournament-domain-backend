@@ -14,14 +14,16 @@ CREATE TABLE IF NOT EXISTS business_cases (
   id TEXT PRIMARY KEY,
   title TEXT NOT NULL,
   description TEXT NOT NULL,
-  structure_type TEXT NOT NULL
+  structure_type TEXT NOT NULL,
+  test_cases_json TEXT NOT NULL DEFAULT '[]'
 );
 
 CREATE TABLE IF NOT EXISTS tournaments (
   id TEXT PRIMARY KEY,
   name TEXT NOT NULL,
   status TEXT NOT NULL,
-  pending_case_ids TEXT NOT NULL DEFAULT '[]'
+  pending_case_ids TEXT NOT NULL DEFAULT '[]',
+  language TEXT NOT NULL DEFAULT 'PSEINT'
 );
 
 CREATE TABLE IF NOT EXISTS rounds (
@@ -59,7 +61,8 @@ CREATE TABLE IF NOT EXISTS submissions (
   content TEXT NOT NULL,
   submitted_at TEXT NOT NULL,
   verdict TEXT NOT NULL,
-  judged_at TEXT
+  judged_at TEXT,
+  execution_result_json TEXT
 );
 
 CREATE TABLE IF NOT EXISTS qualifying_rounds (

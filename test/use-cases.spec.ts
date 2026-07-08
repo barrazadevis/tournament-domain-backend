@@ -15,7 +15,12 @@ import { StartMatchUseCase } from '../src/application/use-cases/start-match.use-
 import { SubmitMatchSolutionUseCase } from '../src/application/use-cases/submit-match-solution.use-case';
 import { JudgeMatchSubmissionUseCase } from '../src/application/use-cases/judge-match-submission.use-case';
 import { AdvanceToNextRoundUseCase } from '../src/application/use-cases/advance-to-next-round.use-case';
-import { TournamentStatus } from '../src/domain/entities/tournament';
+import { StartMatchUseCase as StartMatchUseCaseForCode } from '../src/application/use-cases/start-match.use-case';
+import { TestCodeUseCase } from '../src/application/use-cases/test-code.use-case';
+import { RunSubmissionCodeUseCase } from '../src/application/use-cases/run-submission-code.use-case';
+import { TournamentLanguage, TournamentStatus } from '../src/domain/entities/tournament';
+import { CodeRunInput, CodeRunner, CodeRunResult } from '../src/application/ports/code-runner';
+import { EntityId } from '../src/domain/value-objects/entity-id';
 
 function makeCases(count: number) {
   return Array.from({ length: count }, (_, i) => ({
@@ -24,13 +29,30 @@ function makeCases(count: number) {
   }));
 }
 
-function buildUseCases() {
+/** "n = int(input()); print(n * 2)" simulado — duplica el input, sin llamar a Piston real. */
+class DoublingFakeCodeRunner implements CodeRunner {
+  async run(input: CodeRunInput): Promise<CodeRunResult> {
+    const n = Number(input.stdin.trim());
+    return { stdout: String(n * 2), stderr: '', exitCode: 0, timedOut: false };
+  }
+}
+
+class TimingOutFakeCodeRunner implements CodeRunner {
+  async run(): Promise<CodeRunResult> {
+    return { stdout: '', stderr: 'timeout', exitCode: null, timedOut: true };
+  }
+}
+
+function buildUseCases(codeRunner: CodeRunner = new DoublingFakeCodeRunner()) {
   const teamRepository = new InMemoryTeamRepository();
   const tournamentRepository = new InMemoryTournamentRepository();
   const businessCaseRepository = new InMemoryBusinessCaseRepository();
   const qualifyingRoundRepository = new InMemoryQualifyingRoundRepository();
 
   return {
+    startMatchForCode: new StartMatchUseCaseForCode(tournamentRepository),
+    testCode: new TestCodeUseCase(tournamentRepository, codeRunner),
+    runSubmissionCode: new RunSubmissionCodeUseCase(tournamentRepository, codeRunner),
     teamRepository,
     tournamentRepository,
     registerTeam: new RegisterTeamUseCase(teamRepository),
@@ -207,6 +229,167 @@ describe('Casos de uso', () => {
       await uc.startTournament.execute(input);
 
       await expect(uc.startTournament.execute(input)).rejects.toThrow('El torneo ya fue iniciado');
+    });
+
+    it('rechaza un torneo Python con menos de 2 casos de prueba en algún caso', async () => {
+      const uc = buildUseCases();
+      const tournament = await uc.createTournament.execute({ name: 'Torneo Python incompleto' });
+      const teams = await Promise.all(
+        Array.from({ length: 8 }, (_, i) =>
+          uc.registerTeam.execute({ name: `Equipo ${i + 1}`, memberNames: [`E${i}`] }),
+        ),
+      );
+      const cases = makeCases(3).map((c, i) => ({
+        ...c,
+        testCases: i === 0 ? [{ input: '1', expectedOutput: '2' }] : [
+          { input: '1', expectedOutput: '2' },
+          { input: '2', expectedOutput: '4' },
+        ],
+      }));
+
+      await expect(
+        uc.startTournament.execute({
+          tournamentId: tournament.getId().toString(),
+          teamIds: teams.map((t) => t.getId().toString()),
+          cases,
+          timerDurationSeconds: 300,
+          language: TournamentLanguage.PYTHON,
+        }),
+      ).rejects.toThrow('al menos 2 casos de prueba');
+    });
+
+    it('acepta un torneo Python con 2 casos de prueba por caso y los persiste', async () => {
+      const uc = buildUseCases();
+      const tournament = await uc.createTournament.execute({ name: 'Torneo Python' });
+      const teams = await Promise.all(
+        Array.from({ length: 8 }, (_, i) =>
+          uc.registerTeam.execute({ name: `Equipo ${i + 1}`, memberNames: [`E${i}`] }),
+        ),
+      );
+      const cases = makeCases(3).map((c) => ({
+        ...c,
+        testCases: [
+          { input: '1', expectedOutput: '2' },
+          { input: '2', expectedOutput: '4' },
+        ],
+      }));
+
+      const result = await uc.startTournament.execute({
+        tournamentId: tournament.getId().toString(),
+        teamIds: teams.map((t) => t.getId().toString()),
+        cases,
+        timerDurationSeconds: 300,
+        language: TournamentLanguage.PYTHON,
+      });
+
+      expect(result.kind).toBe('BRACKET_STARTED');
+      const saved = await uc.tournamentRepository.findById(tournament.getId());
+      expect(saved!.getLanguage()).toBe(TournamentLanguage.PYTHON);
+      expect(saved!.getRounds()[0].getMatches()[0].getBusinessCase().getTestCases()).toHaveLength(2);
+    });
+
+    it('un torneo sin language explícito queda en PSEINT (default) y no exige casos de prueba', async () => {
+      const uc = buildUseCases();
+      const tournament = await uc.createTournament.execute({ name: 'Torneo default' });
+      const teams = await Promise.all(
+        Array.from({ length: 8 }, (_, i) =>
+          uc.registerTeam.execute({ name: `Equipo ${i + 1}`, memberNames: [`E${i}`] }),
+        ),
+      );
+
+      await uc.startTournament.execute({
+        tournamentId: tournament.getId().toString(),
+        teamIds: teams.map((t) => t.getId().toString()),
+        cases: makeCases(3),
+        timerDurationSeconds: 300,
+      });
+
+      const saved = await uc.tournamentRepository.findById(tournament.getId());
+      expect(saved!.getLanguage()).toBe(TournamentLanguage.PSEINT);
+    });
+  });
+
+  describe('TestCodeUseCase / RunSubmissionCodeUseCase', () => {
+    async function startPythonMatch(uc: ReturnType<typeof buildUseCases>) {
+      const tournament = await uc.createTournament.execute({ name: 'Torneo Python match' });
+      const teams = await Promise.all(
+        Array.from({ length: 2 }, (_, i) =>
+          uc.registerTeam.execute({ name: `Equipo ${i + 1}`, memberNames: [`E${i}`] }),
+        ),
+      );
+      const cases = makeCases(1).map((c) => ({
+        ...c,
+        testCases: [
+          { input: '1', expectedOutput: '2' },
+          { input: '3', expectedOutput: '6' },
+        ],
+      }));
+
+      await uc.startTournament.execute({
+        tournamentId: tournament.getId().toString(),
+        teamIds: teams.map((t) => t.getId().toString()),
+        cases,
+        timerDurationSeconds: 300,
+        language: TournamentLanguage.PYTHON,
+      });
+
+      const saved = await uc.tournamentRepository.findById(tournament.getId());
+      const match = saved!.getRounds()[0].getMatches()[0];
+      await uc.startMatchForCode.execute({ matchId: match.getId().toString(), now: new Date() });
+      return { teams, matchId: match.getId().toString() };
+    }
+
+    it('TestCodeUseCase compara stdout contra expectedOutput por cada test case', async () => {
+      const uc = buildUseCases();
+      const { matchId } = await startPythonMatch(uc);
+
+      const result = await uc.testCode.execute({ matchId, code: 'n=int(input());print(n*2)' });
+
+      expect(result.status).toBe('RAN');
+      expect(result.testResults).toHaveLength(2);
+      expect(result.testResults.every((t) => t.passed)).toBe(true);
+    });
+
+    it('TestCodeUseCase marca ERROR cuando el motor de ejecución no responde', async () => {
+      const uc = buildUseCases(new TimingOutFakeCodeRunner());
+      const { matchId } = await startPythonMatch(uc);
+
+      const result = await uc.testCode.execute({ matchId, code: 'n=int(input());print(n*2)' });
+
+      expect(result.status).toBe('ERROR');
+    });
+
+    it('RunSubmissionCodeUseCase anota la submission sin tocar la del equipo rival (condición de carrera)', async () => {
+      const uc = buildUseCases();
+      const { teams, matchId } = await startPythonMatch(uc);
+
+      const submissionA = await uc.submitMatchSolution.execute({
+        matchId,
+        teamId: teams[0].getId().toString(),
+        content: 'n=int(input());print(n*2)',
+        submittedAt: new Date(),
+      });
+      const submissionB = await uc.submitMatchSolution.execute({
+        matchId,
+        teamId: teams[1].getId().toString(),
+        content: 'n=int(input());print(n*2)',
+        submittedAt: new Date(),
+      });
+
+      await uc.runSubmissionCode.execute({ matchId, submissionId: submissionA.submissionId });
+
+      const reloaded = await uc.tournamentRepository.findByMatchId(EntityId.fromString(matchId));
+      const match = reloaded!.findMatch(EntityId.fromString(matchId))!;
+      const subA = match.getSubmissions().find((s) => s.getId().toString() === submissionA.submissionId)!;
+      const subB = match.getSubmissions().find((s) => s.getId().toString() === submissionB.submissionId)!;
+
+      expect(subA.getExecutionResult()).not.toBeNull();
+      expect(subA.getExecutionResult()!.testResults.every((t) => t.passed)).toBe(true);
+      // La submission del rival debe seguir existiendo intacta — no borrada
+      // por el UPDATE angosto (a diferencia de lo que pasaría con save() del
+      // agregado completo, ver el hallazgo documentado en RunSubmissionCodeUseCase).
+      expect(subB).toBeDefined();
+      expect(subB.getExecutionResult()).toBeNull();
     });
   });
 

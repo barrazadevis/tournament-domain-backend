@@ -12,3 +12,4 @@ export const TOURNAMENT_DATABASE = Symbol('TournamentDatabase');
 export const USER_REPOSITORY = Symbol('UserRepository');
 export const SESSION_REPOSITORY = Symbol('SessionRepository');
 export const PASSWORD_HASHER = Symbol('PasswordHasher');
+export const CODE_RUNNER = Symbol('CodeRunner');

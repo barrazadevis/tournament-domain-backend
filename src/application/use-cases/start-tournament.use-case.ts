@@ -1,7 +1,7 @@
 import { EntityId } from '../../domain/value-objects/entity-id';
-import { BusinessCase, RequiredStructureType } from '../../domain/entities/business-case';
+import { BusinessCase, BusinessCaseTestCase, RequiredStructureType } from '../../domain/entities/business-case';
 import { QualifyingRound } from '../../domain/entities/qualifying-round';
-import { TournamentStatus } from '../../domain/entities/tournament';
+import { TournamentLanguage, TournamentStatus } from '../../domain/entities/tournament';
 import { PowerOfTwoMath } from '../../domain/services/power-of-two-math';
 import { BracketGenerationService } from '../../domain/services/bracket-generation.service';
 import { TournamentRepository } from '../ports/tournament.repository';
@@ -9,9 +9,13 @@ import { TeamRepository } from '../ports/team.repository';
 import { BusinessCaseRepository } from '../ports/business-case.repository';
 import { QualifyingRoundRepository } from '../ports/qualifying-round.repository';
 
+/** Mínimo de test cases exigido por caso en torneos Python — con 1 solo, un equipo podría hardcodear la salida esperada sin resolver nada; con 2+ inputs distintos ya no alcanza con eso. */
+const MIN_TEST_CASES_FOR_PYTHON = 2;
+
 export interface StartTournamentCaseInput {
   title: string;
   description: string;
+  testCases?: BusinessCaseTestCase[];
 }
 
 export interface StartTournamentInput {
@@ -19,6 +23,8 @@ export interface StartTournamentInput {
   teamIds: string[];
   cases: StartTournamentCaseInput[];
   timerDurationSeconds: number;
+  /** Default PSEINT si se omite — mantiene compatible a los call sites existentes (torneos que no usan ejecución automática). */
+  language?: TournamentLanguage;
 }
 
 /** Cuántos casos hacen falta: uno por ronda, incluyendo la clasificatoria si aplica. */
@@ -74,6 +80,18 @@ export class StartTournamentUseCase {
       );
     }
 
+    const language = input.language ?? TournamentLanguage.PSEINT;
+    if (language === TournamentLanguage.PYTHON) {
+      const caseWithoutEnoughTestCases = input.cases.find(
+        (c) => (c.testCases?.length ?? 0) < MIN_TEST_CASES_FOR_PYTHON,
+      );
+      if (caseWithoutEnoughTestCases) {
+        throw new Error(
+          `Cada caso de un torneo Python necesita al menos ${MIN_TEST_CASES_FOR_PYTHON} casos de prueba`,
+        );
+      }
+    }
+
     const businessCases: BusinessCase[] = [];
     for (const caseInput of input.cases) {
       const businessCase = new BusinessCase(
@@ -81,6 +99,7 @@ export class StartTournamentUseCase {
         caseInput.title,
         caseInput.description,
         RequiredStructureType.SINGLE_STRUCTURE,
+        caseInput.testCases ?? [],
       );
       await this.businessCaseRepository.save(businessCase);
       businessCases.push(businessCase);
@@ -97,6 +116,7 @@ export class StartTournamentUseCase {
       await this.qualifyingRoundRepository.save(qualifyingRound, tournament.getId());
       tournament.enterQualifying();
       tournament.setPendingCaseIds(pendingCaseIds);
+      tournament.setLanguage(language);
       await this.tournamentRepository.save(tournament);
 
       return {
@@ -116,6 +136,7 @@ export class StartTournamentUseCase {
     tournament.addRound(round);
     tournament.start();
     tournament.setPendingCaseIds(pendingCaseIds);
+    tournament.setLanguage(language);
     await this.tournamentRepository.save(tournament);
 
     return {

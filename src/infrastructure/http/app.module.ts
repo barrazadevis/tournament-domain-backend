@@ -8,6 +8,7 @@ import { SqliteQualifyingRoundRepository } from '../persistence/sqlite/qualifyin
 import { SqliteUserRepository } from '../persistence/sqlite/user.repository';
 import { SqliteSessionRepository } from '../persistence/sqlite/session.repository';
 import { ScryptPasswordHasher } from '../security/scrypt-password-hasher';
+import { PistonCodeRunner } from '../piston/piston-code-runner';
 import { TeamRepository } from '../../application/ports/team.repository';
 import { TournamentRepository } from '../../application/ports/tournament.repository';
 import { BusinessCaseRepository } from '../../application/ports/business-case.repository';
@@ -15,6 +16,7 @@ import { QualifyingRoundRepository } from '../../application/ports/qualifying-ro
 import { UserRepository } from '../../application/ports/user.repository';
 import { SessionRepository } from '../../application/ports/session.repository';
 import { PasswordHasher } from '../../application/ports/password-hasher';
+import { CodeRunner } from '../../application/ports/code-runner';
 import { RegisterTeamUseCase } from '../../application/use-cases/register-team.use-case';
 import { DeleteTeamUseCase } from '../../application/use-cases/delete-team.use-case';
 import { RegisterUserUseCase } from '../../application/use-cases/register-user.use-case';
@@ -33,6 +35,8 @@ import { SubmitMatchSolutionUseCase } from '../../application/use-cases/submit-m
 import { JudgeMatchSubmissionUseCase } from '../../application/use-cases/judge-match-submission.use-case';
 import { AdvanceToNextRoundUseCase } from '../../application/use-cases/advance-to-next-round.use-case';
 import { RestartMatchUseCase } from '../../application/use-cases/restart-match.use-case';
+import { TestCodeUseCase } from '../../application/use-cases/test-code.use-case';
+import { RunSubmissionCodeUseCase } from '../../application/use-cases/run-submission-code.use-case';
 import { ExpireMatchTimerUseCase } from '../../application/use-cases/expire-match-timer.use-case';
 import { RenameTournamentUseCase } from '../../application/use-cases/rename-tournament.use-case';
 import { DeleteTournamentUseCase } from '../../application/use-cases/delete-tournament.use-case';
@@ -57,6 +61,7 @@ import {
   USER_REPOSITORY,
   SESSION_REPOSITORY,
   PASSWORD_HASHER,
+  CODE_RUNNER,
 } from './tokens';
 
 /**
@@ -175,6 +180,19 @@ import {
       provide: RestartMatchUseCase,
       useFactory: (tournamentRepo: TournamentRepository) => new RestartMatchUseCase(tournamentRepo),
       inject: [TOURNAMENT_REPOSITORY],
+    },
+    { provide: CODE_RUNNER, useClass: PistonCodeRunner },
+    {
+      provide: TestCodeUseCase,
+      useFactory: (tournamentRepo: TournamentRepository, codeRunner: CodeRunner) =>
+        new TestCodeUseCase(tournamentRepo, codeRunner),
+      inject: [TOURNAMENT_REPOSITORY, CODE_RUNNER],
+    },
+    {
+      provide: RunSubmissionCodeUseCase,
+      useFactory: (tournamentRepo: TournamentRepository, codeRunner: CodeRunner) =>
+        new RunSubmissionCodeUseCase(tournamentRepo, codeRunner),
+      inject: [TOURNAMENT_REPOSITORY, CODE_RUNNER],
     },
     {
       provide: ExpireMatchTimerUseCase,

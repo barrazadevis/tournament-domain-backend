@@ -52,6 +52,21 @@ export class TournamentDatabase {
     } catch {
       // La columna ya existe — no hay nada que migrar.
     }
+    try {
+      this.connection.exec("ALTER TABLE tournaments ADD COLUMN language TEXT NOT NULL DEFAULT 'PSEINT'");
+    } catch {
+      // La columna ya existe — no hay nada que migrar.
+    }
+    try {
+      this.connection.exec("ALTER TABLE business_cases ADD COLUMN test_cases_json TEXT NOT NULL DEFAULT '[]'");
+    } catch {
+      // La columna ya existe — no hay nada que migrar.
+    }
+    try {
+      this.connection.exec('ALTER TABLE submissions ADD COLUMN execution_result_json TEXT');
+    } catch {
+      // La columna ya existe — no hay nada que migrar.
+    }
     this.backfillMissingTeamCodes();
   }
 

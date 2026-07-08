@@ -1,5 +1,5 @@
 import { EntityId } from '../../../../domain/value-objects/entity-id';
-import { Submission, VerdictStatus } from '../../../../domain/entities/submission';
+import { ExecutionResult, Submission, VerdictStatus } from '../../../../domain/entities/submission';
 
 export interface SubmissionRow {
   id: string;
@@ -9,6 +9,7 @@ export interface SubmissionRow {
   submitted_at: string;
   verdict: string;
   judged_at: string | null;
+  execution_result_json: string | null;
 }
 
 export class SubmissionMapper {
@@ -20,10 +21,12 @@ export class SubmissionMapper {
       submittedAt: new Date(row.submitted_at),
       verdict: row.verdict as VerdictStatus,
       judgedAt: row.judged_at ? new Date(row.judged_at) : null,
+      executionResult: row.execution_result_json ? (JSON.parse(row.execution_result_json) as ExecutionResult) : null,
     });
   }
 
   static toRow(submission: Submission, matchId: EntityId): SubmissionRow {
+    const executionResult = submission.getExecutionResult();
     return {
       id: submission.getId().toString(),
       match_id: matchId.toString(),
@@ -32,6 +35,7 @@ export class SubmissionMapper {
       submitted_at: submission.getSubmittedAt().toISOString(),
       verdict: submission.getVerdict(),
       judged_at: submission.getJudgedAt()?.toISOString() ?? null,
+      execution_result_json: executionResult ? JSON.stringify(executionResult) : null,
     };
   }
 }

@@ -1,11 +1,12 @@
-import { Body, Controller, Get, Inject, NotFoundException, Param, Post, UseGuards } from '@nestjs/common';
+import { BadRequestException, Body, Controller, Get, Inject, NotFoundException, Param, Post, UseGuards } from '@nestjs/common';
 import { ApiTags, ApiOperation, ApiBearerAuth } from '@nestjs/swagger';
 import { SessionAuthGuard } from '../guards/session-auth.guard';
 import { StartMatchUseCase } from '../../../application/use-cases/start-match.use-case';
 import { SubmitMatchSolutionUseCase } from '../../../application/use-cases/submit-match-solution.use-case';
 import { JudgeMatchSubmissionUseCase } from '../../../application/use-cases/judge-match-submission.use-case';
 import { RestartMatchUseCase } from '../../../application/use-cases/restart-match.use-case';
-import { SubmitSolutionDto, JudgeVerdictDto } from '../dto/requests.dto';
+import { TestCodeUseCase } from '../../../application/use-cases/test-code.use-case';
+import { SubmitSolutionDto, JudgeVerdictDto, RunCodeDto } from '../dto/requests.dto';
 import { EntityId } from '../../../domain/value-objects/entity-id';
 import { TournamentRepository } from '../../../application/ports/tournament.repository';
 import { TOURNAMENT_REPOSITORY } from '../tokens';
@@ -19,6 +20,7 @@ export class MatchesController {
     private readonly submitMatchSolution: SubmitMatchSolutionUseCase,
     private readonly judgeMatchSubmission: JudgeMatchSubmissionUseCase,
     private readonly restartMatch: RestartMatchUseCase,
+    private readonly testCode: TestCodeUseCase,
     private readonly matchTimer: MatchTimerService,
     @Inject(TOURNAMENT_REPOSITORY) private readonly tournamentRepository: TournamentRepository,
   ) {}
@@ -34,6 +36,7 @@ export class MatchesController {
     return {
       id: match.getId().toString(),
       tournamentId: tournament.getId().toString(),
+      language: tournament.getLanguage(),
       roundName: match.getRoundName(),
       teamAId: match.getTeamAId().toString(),
       teamBId: match.getTeamBId().toString(),
@@ -46,11 +49,34 @@ export class MatchesController {
         title: match.getBusinessCase().getTitle(),
         description: match.getBusinessCase().getDescription(),
       },
-      submissions: match.getSubmissions().map((s) => ({
-        teamId: s.getTeamId().toString(),
-        verdict: s.getVerdict(),
-      })),
+      submissions: match.getSubmissions().map((s) => {
+        const executionResult = s.getExecutionResult();
+        return {
+          teamId: s.getTeamId().toString(),
+          verdict: s.getVerdict(),
+          // Resumen, no el detalle (actual/expected/stderr) — este endpoint
+          // es público y lo consultan ambos equipos del match; el detalle
+          // completo filtraría el stdout del rival. Ver docs/plan-python-piston-execution.md.
+          executionSummary: executionResult
+            ? {
+                status: executionResult.status,
+                testsPassed: executionResult.testResults.filter((t) => t.passed).length,
+                testsTotal: executionResult.testResults.length,
+              }
+            : null,
+        };
+      }),
     };
+  }
+
+  @ApiOperation({ summary: 'Probar código contra los casos de prueba del match, sin enviar submission (solo torneos Python)' })
+  @Post(':matchId/run')
+  async run(@Param('matchId') matchId: string, @Body() dto: RunCodeDto) {
+    try {
+      return await this.testCode.execute({ matchId, code: dto.code });
+    } catch (error) {
+      throw new BadRequestException((error as Error).message);
+    }
   }
 
   @ApiOperation({ summary: 'Iniciar un match (arranca el timer)' })

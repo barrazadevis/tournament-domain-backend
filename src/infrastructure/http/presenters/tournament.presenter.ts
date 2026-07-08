@@ -9,6 +9,10 @@ function presentSubmission(submission: Submission) {
     content: submission.getContent(),
     submittedAt: submission.getSubmittedAt().toISOString(),
     verdict: submission.getVerdict(),
+    // Detalle completo (incluye actual/expected/stderr por test case) — este
+    // presenter alimenta la vista del profesor, que ya expone `content`
+    // completo hoy; mismo nivel de detalle, para que pueda juzgar informado.
+    executionResult: submission.getExecutionResult(),
   };
 }
 
@@ -43,6 +47,7 @@ export class TournamentPresenter {
       id: tournament.getId().toString(),
       name: tournament.getName(),
       status: tournament.getStatus(),
+      language: tournament.getLanguage(),
       rounds: tournament.getRounds().map((round) => ({
         id: round.getId().toString(),
         name: round.getName(),

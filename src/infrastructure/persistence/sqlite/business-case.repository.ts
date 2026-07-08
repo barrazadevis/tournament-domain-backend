@@ -11,14 +11,15 @@ export class SqliteBusinessCaseRepository implements BusinessCaseRepository {
     const row = BusinessCaseMapper.toRow(businessCase);
     this.db.connection
       .prepare(
-        `INSERT INTO business_cases (id, title, description, structure_type)
-         VALUES (?, ?, ?, ?)
+        `INSERT INTO business_cases (id, title, description, structure_type, test_cases_json)
+         VALUES (?, ?, ?, ?, ?)
          ON CONFLICT(id) DO UPDATE SET
            title = excluded.title,
            description = excluded.description,
-           structure_type = excluded.structure_type`,
+           structure_type = excluded.structure_type,
+           test_cases_json = excluded.test_cases_json`,
       )
-      .run(row.id, row.title, row.description, row.structure_type);
+      .run(row.id, row.title, row.description, row.structure_type, row.test_cases_json);
   }
 
   async findById(id: EntityId): Promise<BusinessCase | null> {

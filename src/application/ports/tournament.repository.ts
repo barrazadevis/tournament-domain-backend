@@ -1,5 +1,6 @@
 import { EntityId } from '../../domain/value-objects/entity-id';
 import { Tournament } from '../../domain/entities/tournament';
+import { ExecutionResult } from '../../domain/entities/submission';
 
 /**
  * TournamentRepository: opera sobre el AGGREGATE ROOT completo.
@@ -25,4 +26,10 @@ export interface TournamentRepository {
    * que ya no estén ahí — así que reset() necesita su propio DELETE.
    */
   reset(id: EntityId): Promise<void>;
+  /**
+   * UPDATE angosto de una sola submission — deliberadamente NO pasa por
+   * save() del agregado completo (ver implementación SQLite para el porqué:
+   * evita una condición de carrera real con submissions concurrentes).
+   */
+  updateSubmissionExecutionResult(submissionId: EntityId, result: ExecutionResult): Promise<void>;
 }

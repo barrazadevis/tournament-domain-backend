@@ -12,6 +12,7 @@ export interface SubmitMatchSolutionInput {
 export interface SubmitMatchSolutionOutput {
   /** true si con esta submission ya nadie más puede enviar — el timer server-side puede detenerse. */
   shouldStopTimer: boolean;
+  submissionId: string;
 }
 
 export class SubmitMatchSolutionUseCase {
@@ -35,6 +36,6 @@ export class SubmitMatchSolutionUseCase {
 
     await this.tournamentRepository.save(tournament);
 
-    return { shouldStopTimer: !match.canAnyTeamStillSubmit() };
+    return { shouldStopTimer: !match.canAnyTeamStillSubmit(), submissionId: submission.getId().toString() };
   }
 }
