@@ -72,7 +72,7 @@ import {
   providers: [
     {
       provide: TOURNAMENT_DATABASE,
-      useFactory: () => new TournamentDatabase(join(process.cwd(), 'tournament.db')),
+      useFactory: () => new TournamentDatabase(process.env.DB_PATH ?? join(process.cwd(), 'tournament.db')),
     },
     {
       provide: TEAM_REPOSITORY,
