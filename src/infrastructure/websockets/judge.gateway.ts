@@ -13,7 +13,6 @@ import { SESSION_REPOSITORY } from '../http/tokens';
 
 interface StartMatchPayload {
   matchId: string;
-  timerDurationSeconds: number;
 }
 
 interface JudgeVerdictPayload {
@@ -80,8 +79,11 @@ export class JudgeGateway extends BaseTournamentGateway {
 
   @SubscribeMessage('start_match')
   async handleStartMatch(@MessageBody() data: StartMatchPayload): Promise<void> {
-    await this.startMatch.execute({ matchId: data.matchId, now: new Date() });
-    this.matchTimer.start(data.matchId, data.timerDurationSeconds);
+    // La duración es la que ya quedó fija en el match cuando se generó la
+    // ronda (BracketGenerationService/AdvanceToNextRoundUseCase) — "Iniciar
+    // match" no puede cambiarla, solo arranca el timer con ese valor.
+    const { timerDurationSeconds } = await this.startMatch.execute({ matchId: data.matchId, now: new Date() });
+    this.matchTimer.start(data.matchId, timerDurationSeconds);
     this.eventBus.emitMatchUpdated({ matchId: data.matchId });
   }
 
